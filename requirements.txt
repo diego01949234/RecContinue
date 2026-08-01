@@ -4,8 +4,11 @@ gradio==6.22.0
 pydantic==2.13.4
 requests==2.34.2
 pytest==9.1.1
-opencv-python==4.10.0.84
+# MediaPipe depends on the contrib build; installing it directly avoids a
+# second, conflicting OpenCV wheel and stays compatible with NumPy 1.26.
+opencv-contrib-python==4.10.0.84
 mediapipe==0.10.21
 # NumPy 1.26 has compatible macOS wheels for the local Gradio/OpenCV stack.
 numpy==1.26.4
 faster-whisper==1.1.1
+openpyxl==3.1.5

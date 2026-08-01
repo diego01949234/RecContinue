@@ -183,18 +183,20 @@ It binds only to `127.0.0.1:7860` (`share=False`), with
 
 ## Demo workflow (current build)
 
-1. Open the app and choose exactly one of four synthetic, clinician-provided
-   rehabilitation modules. Click **Apply selected module**.
-2. On **Track movement**, choose the arm and record with the computer
-   camera. Stopping the recording starts local MediaPipe analysis. A small
-   synthetic-measurements shortcut is available for judging without a camera.
-3. On **Gemma report**, generate a validated PEO documentation draft from
-   the selected module and the local measurements. The report includes
-   objective observations, missing information, and neutral questions for
-   clinician discussion; it does not give treatment advice.
-4. On **Export**, the default packet contains the measurement summary and
-   report, while raw video stays excluded. The separate **Clinician review**
-   tab imports an exported packet for annotation and review.
+1. Open the app and choose **Head & Neck**, **Palm**, or **Arm & Elbow**.
+   Record an optional voice check-in; local Whisper transcribes it
+   automatically, while local Gemma returns a short acknowledgement and
+   pre-fills the report note.
+2. On **Record & analyze**, record with the computer camera and select the
+   arm side when applicable. MediaPipe samples every 12 frames after its first
+   landmark acquisition, preserving the local-video workflow while reducing
+   turnaround time. Results use camera-derived 2D kinematic observations:
+   head rotation proxy, hand-aperture ratio, or elbow flexion/extension
+   angular excursion.
+3. On **Gemma report**, add or edit the custom report note and generate a
+   concise PEO documentation draft. The local model is output-capped for fast
+   generation and uses professional rehabilitation terminology grounded only
+   in the recorded measurements and supplied context.
 
 ## Tests
 

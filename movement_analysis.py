@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import math
 import pathlib
+import tempfile
+import uuid
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 # OpenCV and MediaPipe are optional native runtimes. The patient intake,
 # reporting, export, and clinician-review paths must remain usable even when
@@ -72,11 +74,28 @@ BRAND_MINT = (243, 247, 234)  # BGR for #EAF7F3
 
 # Recorded clips can arrive at high camera resolution, but the 2D angle/ratio
 # proxies used here need only a modest number of pixels. Capping the longest
-# side keeps per-frame MediaPipe inference and video-writer encoding fast
-# (this is the main lever for keeping a short clip's analysis to ~10s) without
-# changing any landmark coordinate, since MediaPipe returns normalized [0,1]
-# positions regardless of input size.
+# side keeps video-writer encoding fast without changing any landmark
+# coordinate, since MediaPipe returns normalized [0,1] positions regardless
+# of input size.
 MAX_ANALYSIS_DIMENSION = 480
+
+# Measured on the hackathon dev machine: PoseLandmarker (CPU/XNNPACK, no GPU
+# delegate available) takes ~290ms per frame regardless of input resolution
+# (the model's internal input size is fixed) -- that's the actual dominant
+# cost, e.g. ~90s of inference alone for a 10s/300-frame clip at 30fps. Only
+# running detection on every Nth frame is the real lever for keeping a short
+# clip's analysis to ~10s; frames in between are still resized and written
+# to the annotated output (so it plays at the correct duration/speed) but
+# just don't get a fresh landmark detection, trading overlay/rep-counting
+# smoothness for roughly an N-times speedup.
+# Fast recorded mode: sample about 2.5 frames/sec. This keeps the original
+# video workflow and landmark logic while cutting a 10s/30fps clip to ~25
+# MediaPipe inferences.
+ANALYSIS_FRAME_STRIDE = 12
+# Until the first pose/hand is found, sample more frequently so a person who
+# enters frame just after recording starts is not incorrectly reported as
+# undetected. Once acquired, return immediately to the fast stride above.
+ACQUISITION_FRAME_STRIDE = 4
 
 
 def _capped_frame_size(width: int, height: int, max_dimension: int = MAX_ANALYSIS_DIMENSION) -> tuple[int, int]:
@@ -580,19 +599,20 @@ def _analyze_palm_video(video_path: str, selected_arm: Arm, output_path: Optiona
             if not ok:
                 break
             bgr_frame = cv2.resize(bgr_frame, (width, height))
-            rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            result = landmarker.detect_for_video(mp_image, int(frame_index * (1000.0 / fps)))
             current_opening = None
-            if result.hand_landmarks:
-                hand_landmarks = [
-                    {"x": landmark.x, "y": landmark.y, "visibility": 1.0}
-                    for landmark in result.hand_landmarks[0]
-                ]
-                if len(hand_landmarks) >= 21:
-                    _draw_hand_overlay(bgr_frame, hand_landmarks, width, height)
-                    hand_frames.append(hand_landmarks)
-                    current_opening = palm_closure_ratio(hand_landmarks)
+            if frame_index % (ACQUISITION_FRAME_STRIDE if not hand_frames else ANALYSIS_FRAME_STRIDE) == 0:
+                rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                result = landmarker.detect_for_video(mp_image, int(frame_index * (1000.0 / fps)))
+                if result.hand_landmarks:
+                    hand_landmarks = [
+                        {"x": landmark.x, "y": landmark.y, "visibility": 1.0}
+                        for landmark in result.hand_landmarks[0]
+                    ]
+                    if len(hand_landmarks) >= 21:
+                        _draw_hand_overlay(bgr_frame, hand_landmarks, width, height)
+                        hand_frames.append(hand_landmarks)
+                        current_opening = palm_closure_ratio(hand_landmarks)
             writer.write(bgr_frame)
             if frame_index % PROGRESS_YIELD_EVERY_N_FRAMES == 0:
                 yield {
@@ -642,27 +662,28 @@ def _analyze_head_video(video_path: str, output_path: Optional[str] = None):
             if not ok:
                 break
             bgr_frame = cv2.resize(bgr_frame, (width, height))
-            rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            timestamp_ms = int(frame_index * (1000.0 / fps))
-            result = landmarker.detect_for_video(mp_image, timestamp_ms)
-
             current_turn = None
-            if result.pose_landmarks:
-                landmarks = result.pose_landmarks[0]
-                frame_data = {
-                    "nose": _landmark_point(landmarks, NOSE),
-                    "left_ear": _landmark_point(landmarks, LEFT_EAR),
-                    "right_ear": _landmark_point(landmarks, RIGHT_EAR),
-                    "left_shoulder": _landmark_point(landmarks, LEFT_SHOULDER),
-                    "right_shoulder": _landmark_point(landmarks, RIGHT_SHOULDER),
-                }
-                _draw_head_overlay(bgr_frame, frame_data, width, height)
-                frames_data.append(frame_data)
-                ear_width = abs(frame_data["right_ear"]["x"] - frame_data["left_ear"]["x"])
-                if ear_width > 1e-6:
-                    ear_mid_x = (frame_data["left_ear"]["x"] + frame_data["right_ear"]["x"]) / 2
-                    current_turn = round((frame_data["nose"]["x"] - ear_mid_x) / ear_width, 2)
+            if frame_index % (ACQUISITION_FRAME_STRIDE if not frames_data else ANALYSIS_FRAME_STRIDE) == 0:
+                rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                timestamp_ms = int(frame_index * (1000.0 / fps))
+                result = landmarker.detect_for_video(mp_image, timestamp_ms)
+
+                if result.pose_landmarks:
+                    landmarks = result.pose_landmarks[0]
+                    frame_data = {
+                        "nose": _landmark_point(landmarks, NOSE),
+                        "left_ear": _landmark_point(landmarks, LEFT_EAR),
+                        "right_ear": _landmark_point(landmarks, RIGHT_EAR),
+                        "left_shoulder": _landmark_point(landmarks, LEFT_SHOULDER),
+                        "right_shoulder": _landmark_point(landmarks, RIGHT_SHOULDER),
+                    }
+                    _draw_head_overlay(bgr_frame, frame_data, width, height)
+                    frames_data.append(frame_data)
+                    ear_width = abs(frame_data["right_ear"]["x"] - frame_data["left_ear"]["x"])
+                    if ear_width > 1e-6:
+                        ear_mid_x = (frame_data["left_ear"]["x"] + frame_data["right_ear"]["x"]) / 2
+                        current_turn = round((frame_data["nose"]["x"] - ear_mid_x) / ear_width, 2)
 
             writer.write(bgr_frame)
             if frame_index % PROGRESS_YIELD_EVERY_N_FRAMES == 0:
@@ -710,35 +731,41 @@ def _analyze_arm_video(video_path: str, selected_arm: Arm, output_path: Optional
     frames_data: list[dict] = []
     live_rep_counter = RepetitionCounter()
     frame_index = 0
+    last_frame_data = None
     try:
         while True:
             ok, bgr_frame = cap.read()
             if not ok:
                 break
             bgr_frame = cv2.resize(bgr_frame, (width, height))
-            rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            timestamp_ms = int(frame_index * (1000.0 / fps))
-            result = landmarker.detect_for_video(mp_image, timestamp_ms)
-
             frame_data = None
-            if result.pose_landmarks:
-                landmarks = result.pose_landmarks[0]
-                frame_data = {
-                    "_arm": selected_arm,
-                    "nose": _landmark_point(landmarks, NOSE),
-                    "left_ear": _landmark_point(landmarks, LEFT_EAR),
-                    "right_ear": _landmark_point(landmarks, RIGHT_EAR),
-                    "left_shoulder": _landmark_point(landmarks, LEFT_SHOULDER),
-                    "right_shoulder": _landmark_point(landmarks, RIGHT_SHOULDER),
-                    "elbow": _landmark_point(landmarks, indices["elbow"]),
-                    "wrist": _landmark_point(landmarks, indices["wrist"]),
-                    "index": _landmark_point(landmarks, indices["index"]),
-                    "pinky": _landmark_point(landmarks, indices["pinky"]),
-                }
-                palm_point, _ = approximate_palm_center(frame_data["wrist"], frame_data["index"], frame_data["pinky"])
-                _draw_overlay(bgr_frame, frame_data, palm_point, width, height)
-                frames_data.append(frame_data)
+            if frame_index % (ACQUISITION_FRAME_STRIDE if not frames_data else ANALYSIS_FRAME_STRIDE) == 0:
+                rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                timestamp_ms = int(frame_index * (1000.0 / fps))
+                result = landmarker.detect_for_video(mp_image, timestamp_ms)
+                if result.pose_landmarks:
+                    landmarks = result.pose_landmarks[0]
+                    frame_data = {
+                        "_arm": selected_arm,
+                        "nose": _landmark_point(landmarks, NOSE),
+                        "left_ear": _landmark_point(landmarks, LEFT_EAR),
+                        "right_ear": _landmark_point(landmarks, RIGHT_EAR),
+                        "left_shoulder": _landmark_point(landmarks, LEFT_SHOULDER),
+                        "right_shoulder": _landmark_point(landmarks, RIGHT_SHOULDER),
+                        "elbow": _landmark_point(landmarks, indices["elbow"]),
+                        "wrist": _landmark_point(landmarks, indices["wrist"]),
+                        "index": _landmark_point(landmarks, indices["index"]),
+                        "pinky": _landmark_point(landmarks, indices["pinky"]),
+                    }
+                    last_frame_data = frame_data
+                    frames_data.append(frame_data)
+
+            if last_frame_data is not None:
+                palm_point, _ = approximate_palm_center(
+                    last_frame_data["wrist"], last_frame_data["index"], last_frame_data["pinky"]
+                )
+                _draw_overlay(bgr_frame, last_frame_data, palm_point, width, height)
 
             writer.write(bgr_frame)
             current_angle = frame_elbow_angle(frame_data, selected_arm)
@@ -785,3 +812,123 @@ def analyze_video(
         yield from _analyze_head_video(video_path, output_path)
     else:
         yield from _analyze_arm_video(video_path, selected_arm, output_path)
+
+
+LIVE_STREAM_FPS = 4.0
+
+
+@dataclass
+class LiveSession:
+    """One live webcam observation and its local MediaPipe resources."""
+
+    observation_module: str
+    selected_arm: str = "auto"
+    landmarker: Any = None
+    writer: Any = None
+    output_path: str = ""
+    frames_data: list[dict] = field(default_factory=list)
+    hand_frames: list[list[dict]] = field(default_factory=list)
+    timeseries: list[tuple[float, float]] = field(default_factory=list)
+    start_time: Optional[float] = None
+
+
+def create_live_session(observation_module: str, selected_arm: str = "auto") -> LiveSession:
+    """Open exactly the MediaPipe model required for the selected view."""
+    if observation_module == "palm":
+        _require_hand_runtime()
+        options = mp_vision.HandLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(HAND_MODEL_PATH)),
+            running_mode=mp_vision.RunningMode.VIDEO,
+            num_hands=1,
+        )
+        landmarker = mp_vision.HandLandmarker.create_from_options(options)
+    else:
+        _require_cv()
+        options = mp_vision.PoseLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(MODEL_PATH)),
+            running_mode=mp_vision.RunningMode.VIDEO,
+        )
+        landmarker = mp_vision.PoseLandmarker.create_from_options(options)
+    output_path = str(pathlib.Path(tempfile.gettempdir()) / f"reccontinue_{uuid.uuid4().hex}.mp4")
+    return LiveSession(observation_module=observation_module, selected_arm=selected_arm, landmarker=landmarker, output_path=output_path)
+
+
+def _auto_arm(landmarks) -> str:
+    """Pick the better-visible arm once, avoiding a mirrored left/right UI choice."""
+    def score(indices: tuple[int, int, int]) -> float:
+        return sum(getattr(landmarks[index], "visibility", 0.0) for index in indices)
+    return "left" if score((LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST)) > score((RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST)) else "right"
+
+
+def process_live_frame(session: LiveSession, rgb_frame, frame_timestamp_ms: int):
+    """Run real MediaPipe on one webcam frame and return a drawn RGB frame."""
+    height, width = rgb_frame.shape[:2]
+    bgr_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+    if session.writer is None:
+        session.writer = cv2.VideoWriter(session.output_path, cv2.VideoWriter_fourcc(*"mp4v"), LIVE_STREAM_FPS, (width, height))
+        session.start_time = frame_timestamp_ms / 1000.0
+
+    result = session.landmarker.detect_for_video(
+        mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame), frame_timestamp_ms
+    )
+    metric_value = None
+    if session.observation_module == "palm":
+        if result.hand_landmarks:
+            hand_landmarks = [{"x": lm.x, "y": lm.y, "visibility": 1.0} for lm in result.hand_landmarks[0]]
+            if len(hand_landmarks) >= 21:
+                _draw_hand_overlay(bgr_frame, hand_landmarks, width, height)
+                session.hand_frames.append(hand_landmarks)
+                metric_value = palm_closure_ratio(hand_landmarks)
+    elif result.pose_landmarks:
+        landmarks = result.pose_landmarks[0]
+        if session.observation_module == "head":
+            frame_data = {
+                "nose": _landmark_point(landmarks, NOSE),
+                "left_ear": _landmark_point(landmarks, LEFT_EAR),
+                "right_ear": _landmark_point(landmarks, RIGHT_EAR),
+                "left_shoulder": _landmark_point(landmarks, LEFT_SHOULDER),
+                "right_shoulder": _landmark_point(landmarks, RIGHT_SHOULDER),
+            }
+            _draw_head_overlay(bgr_frame, frame_data, width, height)
+            session.frames_data.append(frame_data)
+            metric_value = frame_head_turn_proxy(frame_data)
+        else:
+            if session.selected_arm == "auto":
+                session.selected_arm = _auto_arm(landmarks)
+            indices = arm_landmark_indices(session.selected_arm)
+            frame_data = {
+                "_arm": session.selected_arm,
+                "nose": _landmark_point(landmarks, NOSE),
+                "left_ear": _landmark_point(landmarks, LEFT_EAR),
+                "right_ear": _landmark_point(landmarks, RIGHT_EAR),
+                "left_shoulder": _landmark_point(landmarks, LEFT_SHOULDER),
+                "right_shoulder": _landmark_point(landmarks, RIGHT_SHOULDER),
+                "elbow": _landmark_point(landmarks, indices["elbow"]),
+                "wrist": _landmark_point(landmarks, indices["wrist"]),
+                "index": _landmark_point(landmarks, indices["index"]),
+                "pinky": _landmark_point(landmarks, indices["pinky"]),
+            }
+            palm_point, _ = approximate_palm_center(frame_data["wrist"], frame_data["index"], frame_data["pinky"])
+            _draw_overlay(bgr_frame, frame_data, palm_point, width, height)
+            session.frames_data.append(frame_data)
+            metric_value = frame_elbow_angle(frame_data, session.selected_arm)
+
+    session.writer.write(bgr_frame)
+    if metric_value is not None:
+        session.timeseries.append((round(frame_timestamp_ms / 1000.0 - (session.start_time or 0), 2), metric_value))
+    return cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB), metric_value
+
+
+def finalize_live_session(session: LiveSession):
+    """Close resources and calculate the same compact local metrics immediately."""
+    if session.writer is not None:
+        session.writer.release()
+    session.landmarker.close()
+    selected_arm = session.selected_arm if session.selected_arm in ("left", "right") else "right"
+    if session.observation_module == "palm":
+        metrics = compute_palm_closure_metrics(session.hand_frames, LIVE_STREAM_FPS, selected_arm)
+    elif session.observation_module == "head":
+        metrics = compute_head_turn_metrics(session.frames_data, LIVE_STREAM_FPS)
+    else:
+        metrics = compute_session_metrics(session.frames_data, LIVE_STREAM_FPS, selected_arm)
+    return session.output_path, metrics, session.timeseries

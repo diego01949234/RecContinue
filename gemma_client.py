@@ -18,11 +18,13 @@ from prompts import (
     ACKNOWLEDGMENT_SYSTEM_PROMPT,
     ONBOARDING_SYSTEM_PROMPT,
     OBSERVATION_RECOMMENDATION_SYSTEM_PROMPT,
+    QUICK_SUMMARY_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     build_acknowledgment_prompt,
     build_onboarding_prompt,
     build_onboarding_repair_prompt,
     build_observation_recommendation_prompt,
+    build_quick_summary_prompt,
     build_repair_prompt,
     build_user_prompt,
 )
@@ -31,7 +33,36 @@ from schemas import ObservationRecommendation, OnboardingIntake, RecContinueRepo
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_MODEL = "gemma4:e2b"
 CONNECT_TIMEOUT_SECONDS = 3
-GENERATE_TIMEOUT_SECONDS = 120
+# gemma4:e2b decodes at ~10 tokens/sec on the hackathon dev machine (M1,
+# no GPU headroom beyond that). A full 12-field prose report used to take
+# ~80-110s of eval time alone. generate_report now only asks Gemma for 6
+# short (2-5 word) fields and caps output at REPORT_NUM_PREDICT tokens,
+# which keeps real generations to ~9-10s; 240s remains as a generous
+# ceiling for cold-load or repair-prompt edge cases, not the expected case.
+GENERATE_TIMEOUT_SECONDS = 10
+# Empirically, 6 fields x 2-5 words fits well under 100 tokens; this cap is
+# a safety net against runaway generation, not the normal stopping point.
+REPORT_NUM_PREDICT = 60
+
+FIXED_SAFETY_NOTICE = (
+    "AI-generated draft requiring clinician review. This report does not "
+    "diagnose, assess severity, or recommend treatment."
+)
+FIXED_LIMITATIONS = [
+    "Camera-based 2D movement measurement is an estimate, not a validated "
+    "clinical measurement.",
+    "Accuracy can be affected by lighting, camera angle, and occlusion.",
+]
+FIXED_FOLLOW_UP_QUESTIONS = [
+    "Please review the objective measurements and patient-reported "
+    "information above for any follow-up questions.",
+]
+_MISSING_CONTEXT_LABELS = {
+    "assistance_needed": "Assistance needed",
+    "discomfort_reported": "Discomfort reported",
+    "difficulty_location": "Difficulty location",
+    "independence_goal": "Independence goal",
+}
 
 
 class OllamaUnavailableError(Exception):
@@ -131,6 +162,7 @@ def _call_ollama_generate(
     timeout: int,
     system: str = SYSTEM_PROMPT,
     json_format: bool = True,
+    num_predict: int | None = None,
 ) -> str:
     request_body = {
         "model": model,
@@ -145,6 +177,8 @@ def _call_ollama_generate(
     }
     if json_format:
         request_body["format"] = "json"
+    if num_predict is not None:
+        request_body["options"] = {"num_predict": num_predict}
     try:
         response = requests.post(
             f"{host}/api/generate",
@@ -162,16 +196,60 @@ def _call_ollama_generate(
         raise GemmaModelNotInstalledError(
             f"Model `{model}` is not installed. Run `ollama pull {model}`."
         )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        # Ollama's own llama-server occasionally returns 5xx on long
+        # generations instead of just being slow (observed in
+        # ~/.ollama/logs/server.log). Surface this the same way as an
+        # unreachable daemon so the UI shows a clear, retryable message
+        # instead of an unhandled exception.
+        raise OllamaUnavailableError(
+            f"Ollama returned an error (HTTP {response.status_code}) while generating. "
+            "This can happen when a generation runs long. Please try again."
+        ) from exc
 
     body = response.json()
     return body.get("response", "")
 
 
-def _parse_and_validate(raw_text: str, session_id: str) -> RecContinueReport:
+def _compute_missing_information(patient_context: dict[str, Any]) -> list[str]:
+    """Flag context fields the patient left blank, without asking Gemma to notice it.
+
+    This was previously part of what Gemma generated per report; computing it
+    directly from the same locally held dict Gemma would have read is both
+    faster (no extra tokens) and more reliable (no risk of the model missing
+    or inventing a gap).
+    """
+    missing = []
+    for key, label in _MISSING_CONTEXT_LABELS.items():
+        value = str(patient_context.get(key, "")).strip()
+        if not value or value.lower() == "not documented":
+            missing.append(f"{label} not documented.")
+    return missing
+
+
+def _fill_deterministic_fields(data: dict[str, Any], patient_context: dict[str, Any]) -> None:
+    """Populate the report fields RecContinue no longer asks Gemma to write.
+
+    These are disclaimer/boilerplate text or directly computable from local
+    data (see REPORT_DETERMINISTIC_FIELDS in prompts.py) — spending model
+    generation time on them added latency without adding real variation.
+    """
+    data["safety_notice"] = FIXED_SAFETY_NOTICE
+    data["limitations"] = list(FIXED_LIMITATIONS)
+    data["clinician_follow_up_questions"] = list(FIXED_FOLLOW_UP_QUESTIONS)
+    data["missing_information"] = _compute_missing_information(patient_context)
+    data.setdefault("patient_friendly_recap", data.get("session_summary", ""))
+
+
+def _parse_and_validate(
+    raw_text: str, session_id: str, patient_context: dict[str, Any]
+) -> RecContinueReport:
     json_text = _extract_json_text(raw_text)
     data: Any = json.loads(json_text)
     data.setdefault("session_id", session_id)
+    _fill_deterministic_fields(data, patient_context)
     return RecContinueReport.model_validate(data)
 
 
@@ -256,25 +334,26 @@ def generate_report(
 ) -> RecContinueReport:
     """Generate and validate a RecContinueReport from locally held session data.
 
-    On invalid/unparseable JSON, attempts exactly one repair prompt before
-    raising GemmaInvalidResponseError with the original raw text preserved
-    for manual review.
+    Uses one local repair attempt if Gemma returns invalid JSON.
     """
-    prompt = build_user_prompt(session_id, patient, movement_metrics, patient_context)
-    raw_text = _call_ollama_generate(prompt, host, model, timeout)
+    prompt = build_user_prompt(patient, movement_metrics, patient_context)
+    raw_text = _call_ollama_generate(
+        prompt, host, model, timeout, num_predict=REPORT_NUM_PREDICT
+    )
 
     try:
-        return _parse_and_validate(raw_text, session_id)
+        return _parse_and_validate(raw_text, session_id, patient_context)
     except (json.JSONDecodeError, ValidationError, AttributeError) as first_error:
         repair_prompt = build_repair_prompt(session_id, raw_text, str(first_error))
         try:
-            repaired_text = _call_ollama_generate(repair_prompt, host, model, timeout)
-            return _parse_and_validate(repaired_text, session_id)
+            repaired_text = _call_ollama_generate(
+                repair_prompt, host, model, timeout, num_predict=REPORT_NUM_PREDICT
+            )
+            return _parse_and_validate(repaired_text, session_id, patient_context)
         except (json.JSONDecodeError, ValidationError, AttributeError) as second_error:
             raise GemmaInvalidResponseError(
                 f"Gemma output did not match the required schema after one repair "
-                f"attempt: {second_error}",
-                raw_text=raw_text,
+                f"attempt: {second_error}", raw_text=raw_text,
             ) from second_error
 
 
@@ -298,6 +377,32 @@ def generate_acknowledgment(
         model,
         timeout,
         system=ACKNOWLEDGMENT_SYSTEM_PROMPT,
+        json_format=False,
+    )
+    return raw_text.strip()
+
+
+def generate_quick_summary(
+    age: int,
+    assigned_task: str | None,
+    host: str = DEFAULT_OLLAMA_HOST,
+    model: str = DEFAULT_MODEL,
+    timeout: int = GENERATE_TIMEOUT_SECONDS,
+) -> str:
+    """Generate a short, plain-text personalized welcome for the Tab 1 age input.
+
+    Callers must run the returned text through ``validate_text_safety`` before
+    displaying it, same as ``generate_acknowledgment``. No JSON schema and no
+    movement data are involved, so this stays fast enough to run immediately
+    after the patient enters their age, before any recording happens.
+    """
+    prompt = build_quick_summary_prompt(age, assigned_task)
+    raw_text = _call_ollama_generate(
+        prompt,
+        host,
+        model,
+        timeout,
+        system=QUICK_SUMMARY_SYSTEM_PROMPT,
         json_format=False,
     )
     return raw_text.strip()

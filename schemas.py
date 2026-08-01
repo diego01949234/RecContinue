@@ -1,6 +1,8 @@
 """Pydantic schemas for RecContinue's Gemma-generated PEO report."""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -21,6 +23,18 @@ class OnboardingIntake(BaseModel):
     patient_statement: str
     missing_information: list[str] = Field(default_factory=list)
     task_connection: str
+
+
+class ObservationRecommendation(BaseModel):
+    """A non-diagnostic suggestion for which camera view to start with.
+
+    This is deliberately limited to choosing one of the three observation
+    views already offered in the interface. It never selects a treatment,
+    exercise, or clinical classification.
+    """
+
+    observation_module: Literal["head", "palm", "arm"]
+    explanation: str
 
 
 class RecContinueReport(BaseModel):
