@@ -14,7 +14,13 @@ from typing import Any
 import requests
 from pydantic import ValidationError
 
-from prompts import SYSTEM_PROMPT, build_repair_prompt, build_user_prompt
+from prompts import (
+    ACKNOWLEDGMENT_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    build_acknowledgment_prompt,
+    build_repair_prompt,
+    build_user_prompt,
+)
 from schemas import RecContinueReport
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
@@ -118,17 +124,21 @@ def _call_ollama_generate(
     host: str,
     model: str,
     timeout: int,
+    system: str = SYSTEM_PROMPT,
+    json_format: bool = True,
 ) -> str:
+    request_body = {
+        "model": model,
+        "system": system,
+        "prompt": prompt,
+        "stream": False,
+    }
+    if json_format:
+        request_body["format"] = "json"
     try:
         response = requests.post(
             f"{host}/api/generate",
-            json={
-                "model": model,
-                "system": SYSTEM_PROMPT,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",
-            },
+            json=request_body,
             timeout=timeout,
         )
     except requests.Timeout as exc:
@@ -186,6 +196,31 @@ def generate_report(
                 f"attempt: {second_error}",
                 raw_text=raw_text,
             ) from second_error
+
+
+def generate_acknowledgment(
+    transcript: str,
+    assigned_task: str,
+    host: str = DEFAULT_OLLAMA_HOST,
+    model: str = DEFAULT_MODEL,
+    timeout: int = GENERATE_TIMEOUT_SECONDS,
+) -> str:
+    """Generate a short, plain-text acknowledgment for the Tab 1 voice note.
+
+    Callers must run the returned text through ``validate_text_safety`` before
+    displaying it. This client deliberately only communicates with the local
+    Ollama endpoint.
+    """
+    prompt = build_acknowledgment_prompt(transcript, assigned_task)
+    raw_text = _call_ollama_generate(
+        prompt,
+        host,
+        model,
+        timeout,
+        system=ACKNOWLEDGMENT_SYSTEM_PROMPT,
+        json_format=False,
+    )
+    return raw_text.strip()
 
 
 if __name__ == "__main__":

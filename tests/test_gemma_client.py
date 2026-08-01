@@ -121,3 +121,27 @@ def test_generate_report_raises_unavailable_error():
             gemma_client.generate_report(
                 "SYN-001-session", {"patient_id": "SYN-001"}, {"repetition_count": 3}, {"patient_statement": "hi"}
             )
+
+
+def test_generate_acknowledgment_returns_plain_text_and_uses_ack_system_prompt():
+    fake_response = _fake_generate_response(
+        "Thanks for sharing that. The assigned activity remains the reach-and-place cup task."
+    )
+    with patch("gemma_client.requests.post", return_value=fake_response) as mock_post:
+        text = gemma_client.generate_acknowledgment("My arm feels stiff.", "Reach-and-place cup task")
+
+    assert "reach-and-place cup task" in text.lower()
+    sent_json = mock_post.call_args.kwargs["json"]
+    assert sent_json["system"] == gemma_client.ACKNOWLEDGMENT_SYSTEM_PROMPT
+    assert "format" not in sent_json
+
+
+def test_generate_report_still_requests_json_format():
+    fake_response = _fake_generate_response(json.dumps(VALID_REPORT_JSON))
+    with patch("gemma_client.requests.post", return_value=fake_response) as mock_post:
+        gemma_client.generate_report(
+            "SYN-001-session", {"patient_id": "SYN-001"}, {"repetition_count": 3}, {"patient_statement": "hi"}
+        )
+    sent_json = mock_post.call_args.kwargs["json"]
+    assert sent_json["format"] == "json"
+    assert sent_json["system"] == gemma_client.SYSTEM_PROMPT
