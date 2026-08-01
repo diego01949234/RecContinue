@@ -1,0 +1,17 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RecContinue logo">
+  <rect x="4" y="4" width="112" height="112" rx="26" fill="#14253D" />
+  <!-- R stem -->
+  <line x1="34" y1="24" x2="34" y2="96" stroke="#1FA89A" stroke-width="7" stroke-linecap="round" />
+  <!-- R bowl -->
+  <line x1="34" y1="24" x2="72" y2="34" stroke="#1FA89A" stroke-width="7" stroke-linecap="round" />
+  <line x1="72" y1="34" x2="34" y2="58" stroke="#1FA89A" stroke-width="7" stroke-linecap="round" />
+  <!-- R leg flowing into an infinity loop: continuity, no interruption -->
+  <line x1="34" y1="58" x2="58" y2="76" stroke="#1FA89A" stroke-width="7" stroke-linecap="round" />
+  <path d="M58,76 C58,65 66,65 74,76 C82,87 90,87 90,76 C90,65 82,65 74,76 C66,87 58,87 58,76 Z"
+        fill="none" stroke="#1FA89A" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- nodes -->
+  <circle cx="34" cy="24" r="6" fill="#EAF7F3" stroke="#1FA89A" stroke-width="3" />
+  <circle cx="72" cy="34" r="6" fill="#EAF7F3" stroke="#1FA89A" stroke-width="3" />
+  <circle cx="34" cy="96" r="6" fill="#EAF7F3" stroke="#1FA89A" stroke-width="3" />
+  <circle cx="34" cy="58" r="7" fill="#FF7A68" stroke="#EAF7F3" stroke-width="2" />
+</svg>

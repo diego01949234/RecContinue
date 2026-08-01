@@ -1,0 +1,14 @@
+{
+  "data_status": "Synthetic demonstration data — not generated from a real patient.",
+  "selected_arm": "right",
+  "repetition_count": 3,
+  "session_duration_seconds": 18.4,
+  "estimated_2d_elbow_angle_at_peak_reach_degrees": 138.2,
+  "maximum_observed_hand_height_relative_to_shoulder": 0.21,
+  "observed_head_position_variation": 0.06,
+  "landmark_confidence": {
+    "average": 0.88,
+    "low_confidence": false
+  },
+  "measurement_basis": "wrist-based"
+}

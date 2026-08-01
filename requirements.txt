@@ -1,0 +1,9 @@
+# Installed and tested in this build, on Python 3.12
+# (python3.11 was unavailable in the dev environment; see README known limitations)
+gradio==6.22.0
+pydantic==2.13.4
+requests==2.34.2
+pytest==9.1.1
+opencv-python==5.0.0.93
+mediapipe==1.0.0
+numpy==2.5.1

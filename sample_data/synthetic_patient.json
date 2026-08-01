@@ -1,0 +1,12 @@
+{
+  "patient_id": "SYN-001",
+  "name": "Ms. Lin",
+  "age": 52,
+  "condition_source": "Clinician-provided",
+  "clinician_provided_condition": "Post-stroke rehabilitation",
+  "task": "Reach-and-place cup task",
+  "selected_arm": "right",
+  "patient_goal": "I want to put cups back on the kitchen shelf without asking for help.",
+  "home_context": "The frequently used kitchen shelf is above shoulder height.",
+  "data_status": "Entirely synthetic"
+}
