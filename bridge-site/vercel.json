@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/demo",
+      "destination": "https://demo-site-ashy-iota.vercel.app/",
+      "permanent": false
+    }
+  ]
+}

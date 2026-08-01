@@ -9,6 +9,24 @@ const $ = (id) => document.getElementById(id);
 const canvas = $("motionCanvas");
 const ctx = canvas.getContext("2d");
 
+function populateCompletedSample() {
+  const d = data[state.module];
+  state.finished = true;
+  $("canvasEmpty").classList.add("hidden");
+  $("metricValue").textContent = d.value; $("metricUnit").textContent = d.unit;
+  $("sampleCount").textContent = d.samples; $("confidence").textContent = d.confidence;
+  $("analysisLine").textContent = d.observation;
+  $("captureTitle").textContent = "Completed sample observation";
+  $("captureDetail").textContent = "Synthetic landmark overlay is ready to replay.";
+  $("metricsFoot").textContent = "Synthetic demonstration measurements — not a clinical measurement.";
+  $("generateReport").disabled = false;
+  $("liveChip").textContent = "COMPLETE";
+  $("timelineFill").style.setProperty("--progress", "100%"); $("timeCounter").textContent = "0:08";
+  $("runDemo").textContent = "Replay MediaPipe demo ↻";
+  draw(.75, true);
+  report();
+}
+
 function setModule(module) {
   if (state.running) return;
   state.module = module; state.finished = false;
@@ -18,12 +36,8 @@ function setModule(module) {
   });
   const d = data[module];
   $("videoMode").textContent = d.label; $("metricName").textContent = d.name; $("viewName").textContent = d.view;
-  $("metricValue").textContent = "—"; $("metricUnit").textContent = "WAITING"; $("sampleCount").textContent = "—"; $("confidence").textContent = "—";
-  $("analysisLine").textContent = `Ready to demonstrate ${d.view.toLowerCase()} landmark observation.`;
-  $("captureTitle").textContent = `Ready to observe ${d.view.toLowerCase()} movement`; $("captureDetail").textContent = "Run the demo to draw detected nodes.";
-  $("metricsFoot").textContent = "Awaiting demonstration observation."; $("reportOutput").innerHTML = '<p class="report-placeholder">Complete the observation to create a clinician-reviewable demonstration draft.</p>';
-  $("generateReport").disabled = true; $("canvasEmpty").classList.remove("hidden"); $("timelineFill").style.setProperty("--progress", "0%"); $("timeCounter").textContent = "0:00";
-  draw(0, false);
+  $("reportOutput").innerHTML = '<p class="report-placeholder">Loading the completed demonstration record…</p>';
+  populateCompletedSample();
 }
 
 function pt(x, y) { return [x * canvas.width, y * canvas.height]; }
