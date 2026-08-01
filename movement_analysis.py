@@ -88,10 +88,10 @@ MAX_ANALYSIS_DIMENSION = 480
 # to the annotated output (so it plays at the correct duration/speed) but
 # just don't get a fresh landmark detection, trading overlay/rep-counting
 # smoothness for roughly an N-times speedup.
-# Fast recorded mode: sample about 2.5 frames/sec. This keeps the original
-# video workflow and landmark logic while cutting a 10s/30fps clip to ~25
-# MediaPipe inferences.
-ANALYSIS_FRAME_STRIDE = 12
+# Demo-safe mode: use every recorded frame. This is slower, but it preserves
+# the original MediaPipe tracking behaviour and is the most reliable option
+# for short webcam recordings.
+ANALYSIS_FRAME_STRIDE = 1
 # Until the first pose/hand is found, sample more frequently so a person who
 # enters frame just after recording starts is not incorrectly reported as
 # undetected. Once acquired, return immediately to the fast stride above.

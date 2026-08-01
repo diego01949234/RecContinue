@@ -612,20 +612,21 @@ def analyze_video_handler(video_path, selected_arm, observation_module="arm"):
         else:
             video_path = getattr(video_path, "path", None) or getattr(video_path, "name", None)
     if video_path is None:
-        yield None, "Please record a video with your computer camera, then press \"Analyze recording\".", None, ""
-        return
+        return None, "Please record a video with your computer camera, then press \"Analyze recording\".", None, ""
 
     try:
+        result = None
         for item in analyze_video(video_path, selected_arm, observation_module=observation_module or "arm"):
-            if isinstance(item, dict):
-                yield gr.update(), gr.update(), gr.update(), _progress_markdown(item)
-            else:
-                annotated_path, metrics = item
-                yield annotated_path, _metrics_markdown(metrics, is_synthetic=False), metrics, ""
+            if not isinstance(item, dict):
+                result = item
+        if result is None:
+            return None, "⚠️ MediaPipe did not return an analysis result.", None, ""
+        annotated_path, metrics = result
+        return annotated_path, _metrics_markdown(metrics, is_synthetic=False), metrics, "Analysis complete."
     except MovementAnalysisUnavailableError as exc:
-        yield None, f"⚠️ {exc}", None, ""
+        return None, f"⚠️ {exc}", None, ""
     except NoPoseDetectedError as exc:
-        yield (
+        return (
             None,
             f"⚠️ {exc} Try a video with better lighting and the {selected_arm} arm fully in "
             "frame.",
@@ -633,9 +634,9 @@ def analyze_video_handler(video_path, selected_arm, observation_module="arm"):
             "",
         )
     except ValueError as exc:
-        yield None, f"⚠️ {exc} Check that the file is a supported video format (e.g. MP4).", None, ""
+        return None, f"⚠️ {exc} Check that the file is a supported video format (e.g. MP4).", None, ""
     except Exception as exc:
-        yield None, f"⚠️ MediaPipe analysis error: {exc}", None, ""
+        return None, f"⚠️ MediaPipe analysis error: {exc}", None, ""
 
 
 _LIVE_METRIC_LABELS = {"head": "head turn", "palm": "palm opening", "arm": "elbow angle"}
@@ -1097,6 +1098,10 @@ def build_app() -> gr.Blocks:
                 fn=analyze_video_handler,
                 inputs=[video_input, arm_radio, selected_module_state],
                 outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md],
+                # OpenCV reads the webcam .webm directly. Skipping Gradio's
+                # video preprocessor avoids its otherwise mandatory FFmpeg
+                # conversion step on machines where FFmpeg is unavailable.
+                preprocess=False,
             )
             report_next_btn.click(fn=lambda: gr.Tabs(selected=2), outputs=tabs)
             voice_input.stop_recording(
@@ -1120,4 +1125,5 @@ if __name__ == "__main__":
         server_port=int(os.environ.get("GRADIO_SERVER_PORT", "7860")),
         share=False,
         css=BRAND_CSS,
+        show_error=True,
     )
