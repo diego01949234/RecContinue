@@ -255,6 +255,30 @@ def compute_session_metrics(frames: list[dict], fps: float, selected_arm: Arm) -
     }
 
 
+def frame_elbow_angle(frame_data: Optional[dict], selected_arm: Arm) -> Optional[float]:
+    """Compute the 2D elbow angle for one frame's landmark data.
+
+    Returns ``None`` when the frame has no detected pose or the elbow or
+    wrist landmark is unavailable. Full-session metrics remain the
+    authoritative source for the reported peak-reach angle.
+    """
+    if frame_data is None:
+        return None
+    shoulder_key = "left_shoulder" if selected_arm == "left" else "right_shoulder"
+    shoulder_pt = frame_data[shoulder_key]
+    elbow, wrist = frame_data.get("elbow"), frame_data.get("wrist")
+    if elbow is None or wrist is None:
+        return None
+    return round(
+        angle_2d(
+            (shoulder_pt["x"], shoulder_pt["y"]),
+            (elbow["x"], elbow["y"]),
+            (wrist["x"], wrist["y"]),
+        ),
+        1,
+    )
+
+
 def _require_cv() -> None:
     if not _CV_AVAILABLE:
         raise MovementAnalysisUnavailableError(
