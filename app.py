@@ -24,6 +24,7 @@ from gemma_client import (
     GemmaTimeoutError,
     OllamaUnavailableError,
     check_ollama_connection,
+    generate_onboarding_intake,
     generate_report,
 )
 from movement_analysis import (
@@ -61,87 +62,157 @@ BRAND_CSS = """
 :root {
     --kc-navy: #14253D;
     --kc-teal: #1FA89A;
-    --kc-teal-dark: #14806F;
+    --kc-teal-dark: #107567;
     --kc-mint: #EAF7F3;
+    --kc-mist: #F4FAF8;
     --kc-coral: #FF7A68;
-    --kc-bg: #F7F9FB;
+    --kc-bg: #F6F8F9;
     --kc-text: #1E293B;
     --kc-text-secondary: #64748B;
     --kc-border: #E2E8F0;
+    --kc-paper: #FFFFFF;
+    --kc-shadow: 0 18px 46px rgba(20, 37, 61, 0.08);
 }
-.gradio-container { background: var(--kc-bg) !important; color: var(--kc-text) !important; }
-#kc-header { display: flex; align-items: center; gap: 16px; padding: 12px 4px; }
-#kc-header img { width: 52px; height: 52px; }
-#kc-title-block h1 { font-size: 1.5rem; font-weight: 700; color: var(--kc-navy); margin: 0; }
-#kc-title-block p { color: var(--kc-text-secondary); margin: 2px 0 0 0; }
-.kc-badge-row { margin: 4px 0 12px 0; }
+.gradio-container {
+    max-width: 1240px !important; min-height: 100vh; margin: 0 auto !important;
+    padding: 32px clamp(20px, 4vw, 56px) 56px !important;
+    color: var(--kc-text) !important; background: var(--kc-bg) !important;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif !important;
+    letter-spacing: -0.01em;
+}
+.gradio-container * { box-sizing: border-box; }
+#kc-header {
+    position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center; gap: 16px; padding: 8px 0 24px; margin-bottom: 12px;
+    border-bottom: 1px solid rgba(20, 37, 61, 0.12);
+}
+#kc-header::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 118px; height: 2px; background: var(--kc-teal); }
+#kc-header img { width: 48px; height: 48px; filter: drop-shadow(0 8px 12px rgba(20, 37, 61, .12)); }
+#kc-title-block .kc-overline { margin: 0 0 3px; color: var(--kc-teal-dark); font-size: .68rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+#kc-title-block h1 { font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; font-size: clamp(1.65rem, 3vw, 2.1rem); font-weight: 700; letter-spacing: -0.055em; color: var(--kc-navy); margin: 0; }
+#kc-title-block p { color: var(--kc-text-secondary); font-size: .82rem; margin: 2px 0 0; }
+.kc-header-note { display: flex; align-items: center; gap: 7px; color: var(--kc-text-secondary); font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.kc-header-note::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--kc-teal); box-shadow: 0 0 0 4px var(--kc-mint); }
+.kc-badge-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 18px 0 22px; }
 .kc-badge {
-    display: inline-block; padding: 4px 12px; border-radius: 999px;
-    font-size: 0.8rem; font-weight: 600; margin-right: 8px; margin-bottom: 6px;
+    display: inline-flex; align-items: center; padding: 6px 11px; border-radius: 999px;
+    font-size: .7rem; font-weight: 800; line-height: 1.2; letter-spacing: .02em;
 }
-.kc-badge-status { background: var(--kc-mint); color: var(--kc-navy); border: 1px solid var(--kc-teal); }
-.kc-badge-safety { background: #FFF1EE; color: var(--kc-navy); border: 1px solid var(--kc-coral); }
+.kc-badge-status { background: var(--kc-mint); color: var(--kc-teal-dark); border: 1px solid #B5E8DD; }
+.kc-badge-safety { background: #FFF6F3; color: #9A4D42; border: 1px solid #FFD4CC; }
+
+/* Shared Gradio surface reset */
+.gradio-container .prose { max-width: none; }
+.gradio-container .prose p { line-height: 1.65; }
+.gradio-container .prose h1, .gradio-container .prose h2, .gradio-container .prose h3 {
+    color: var(--kc-navy); letter-spacing: -0.035em;
+}
+#kc-tabs { margin-top: 6px; }
+#kc-tabs > .tab-nav { gap: 6px; padding: 6px; border: 1px solid var(--kc-border); border-radius: 14px; background: rgba(255,255,255,.76); }
+#kc-tabs button { border-radius: 9px !important; color: var(--kc-text-secondary); font-size: .78rem; font-weight: 750; transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
+#kc-tabs button.selected { color: var(--kc-navy) !important; background: var(--kc-paper) !important; box-shadow: 0 3px 10px rgba(20,37,61,.08); }
+#kc-tabs > .tab-nav button::after { display: none !important; }
+.gradio-container input, .gradio-container textarea, .gradio-container select {
+    border-color: #D7E0E7 !important; border-radius: 10px !important; background: #FCFDFD !important;
+    box-shadow: none !important;
+}
+.gradio-container input:focus, .gradio-container textarea:focus, .gradio-container select:focus {
+    border-color: var(--kc-teal) !important; box-shadow: 0 0 0 3px rgba(31,168,154,.12) !important;
+}
+.gradio-container label { color: var(--kc-navy) !important; font-size: .82rem !important; font-weight: 700 !important; }
+.gradio-container button { border-radius: 10px !important; font-weight: 750 !important; }
 
 /* Step progress bar (patient flow, Tabs 1-5) */
 .kc-stepper {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    margin: 4px 4px 18px 4px; padding: 14px 18px; background: #fff;
-    border: 1px solid var(--kc-border); border-radius: 14px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 0;
+    margin: 22px 0 20px; padding: 15px 20px 13px; background: rgba(255,255,255,.76);
+    border: 1px solid var(--kc-border); border-radius: 16px;
 }
-.kc-step { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; }
+.kc-step { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 70px; }
 .kc-step-dot {
-    width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center;
-    justify-content: center; font-size: 0.8rem; font-weight: 700;
-    background: #F1F5F9; color: var(--kc-text-secondary); border: 2px solid var(--kc-border);
+    width: 25px; height: 25px; border-radius: 999px; display: flex; align-items: center;
+    justify-content: center; font-size: .7rem; font-weight: 800;
+    background: #F2F5F7; color: var(--kc-text-secondary); border: 1px solid var(--kc-border);
 }
-.kc-step-label { font-size: 0.72rem; color: var(--kc-text-secondary); text-align: center; max-width: 90px; }
+.kc-step-label { font-size: .67rem; color: var(--kc-text-secondary); text-align: center; line-height: 1.25; max-width: 92px; }
 .kc-step-done .kc-step-dot { background: var(--kc-mint); color: var(--kc-teal-dark); border-color: var(--kc-teal); }
-.kc-step-active .kc-step-dot { background: var(--kc-teal); color: #fff; border-color: var(--kc-teal); box-shadow: 0 0 0 4px var(--kc-mint); }
+.kc-step-active .kc-step-dot { background: var(--kc-teal); color: #fff; border-color: var(--kc-teal); box-shadow: 0 0 0 4px rgba(31,168,154,.13); }
 .kc-step-active .kc-step-label { color: var(--kc-navy); font-weight: 700; }
-.kc-step-line { flex: 1; height: 2px; background: var(--kc-border); margin-top: 13px; }
+.kc-step-line { flex: 1; height: 1px; background: var(--kc-border); margin-top: 12px; }
 .kc-stepper-clinician {
-    display: block; padding: 10px 16px; background: var(--kc-navy); color: #fff;
-    border-radius: 10px; font-weight: 600; font-size: 0.9rem;
+    display: block; padding: 13px 18px; background: var(--kc-navy); color: #fff;
+    border-radius: 14px; font-weight: 700; font-size: .86rem;
 }
 
 /* Card grouping for visual hierarchy inside tabs */
 .kc-card {
-    background: #fff !important; border: 1px solid var(--kc-border) !important;
-    border-radius: 12px !important; padding: 16px 18px !important; margin-bottom: 14px !important;
+    position: relative; overflow: hidden; background: var(--kc-paper) !important;
+    border: 1px solid var(--kc-border) !important; border-radius: 16px !important;
+    padding: 20px 22px !important; margin-bottom: 14px !important;
+    box-shadow: 0 5px 15px rgba(20,37,61,.025);
 }
 .kc-card .styler, .kc-card > .form,
 .kc-landing-card .styler, .kc-landing-card > .form {
     background: transparent !important; border: none !important; box-shadow: none !important;
 }
-.kc-card-title { font-weight: 700; color: var(--kc-navy); margin: 0 0 6px 0; font-size: 0.95rem; }
+.kc-card-title { font-weight: 800; color: var(--kc-navy); margin: 0 0 7px; font-size: .92rem; letter-spacing: -.02em; }
 
 /* Button hierarchy */
-button.primary { background: var(--kc-teal) !important; border-color: var(--kc-teal) !important; }
-button.primary:hover { background: var(--kc-teal-dark) !important; }
-.kc-continue button.primary { font-weight: 700; }
-.kc-hint-warning { color: var(--kc-coral) !important; font-size: 0.85rem; margin-top: 4px; }
-.kc-helper-text { color: var(--kc-text-secondary); font-size: 0.85rem; }
+button.primary { color: #fff !important; background: var(--kc-teal) !important; border-color: var(--kc-teal) !important; box-shadow: 0 5px 13px rgba(31,168,154,.19); }
+button.primary:hover { background: var(--kc-teal-dark) !important; border-color: var(--kc-teal-dark) !important; transform: translateY(-1px); }
+button.secondary { color: var(--kc-navy) !important; background: #fff !important; border-color: #D7E0E7 !important; }
+.kc-continue { justify-content: flex-end; margin-top: 6px; }
+.kc-continue button.primary { min-width: 226px; padding: 10px 16px !important; }
+.kc-hint-warning { color: #B75545 !important; font-size: .8rem; margin-top: 5px; }
+.kc-helper-text { color: var(--kc-text-secondary); font-size: .8rem; line-height: 1.55; }
 
 /* Landing / welcome screen */
 .kc-landing-card {
-    background: #fff !important; border: 1px solid var(--kc-border) !important;
-    border-radius: 16px !important; padding: 28px 28px 22px 28px !important;
-    max-width: 720px; margin: 8px auto 0 auto !important;
+    position: relative; isolation: isolate; overflow: hidden;
+    background: linear-gradient(116deg, #FFFFFF 0%, #FFFFFF 58%, #EEF9F6 100%) !important;
+    border: 1px solid #D9E9E5 !important; border-radius: 21px !important;
+    padding: clamp(26px, 4vw, 46px) !important; max-width: 920px;
+    margin: 6px auto 0 !important; box-shadow: var(--kc-shadow);
 }
-.kc-landing-eyebrow { color: var(--kc-teal-dark); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; margin: 0; }
-.kc-landing-title { color: var(--kc-navy); font-size: 1.3rem; font-weight: 700; margin: 4px 0 10px 0; }
+.kc-landing-card::before { content: ""; position: absolute; z-index: -1; right: -122px; top: -168px; width: 390px; height: 390px; border: 48px solid rgba(31,168,154,.10); border-radius: 50%; }
+.kc-landing-card::after { content: ""; position: absolute; z-index: -1; right: 89px; bottom: 27px; width: 9px; height: 9px; border-radius: 50%; background: var(--kc-coral); box-shadow: -34px -17px 0 0 var(--kc-teal), 30px -43px 0 0 rgba(31,168,154,.4), 64px -20px 0 0 rgba(31,168,154,.22); }
+.kc-landing-eyebrow { color: var(--kc-teal-dark); font-weight: 800; font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; margin: 0; }
+.kc-landing-title { max-width: 590px; color: var(--kc-navy); font-family: "Iowan Old Style", Georgia, serif; font-size: clamp(2rem, 4vw, 3.1rem); font-weight: 700; line-height: 1.06; letter-spacing: -.058em; margin: 8px 0 16px; }
+.kc-landing-card .prose > p:not(.kc-landing-eyebrow):not(.kc-landing-title) { max-width: 590px; color: #4E6072; font-size: .96rem; }
 .kc-track-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
-    margin: 18px 0 6px 0;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px;
+    max-width: 640px; margin: 24px 0 12px;
 }
 .kc-track-item {
-    background: var(--kc-mint); border: 1px solid var(--kc-teal); border-radius: 12px;
-    padding: 12px 6px; text-align: center;
+    background: rgba(255,255,255,.78); border: 1px solid #D6E8E3; border-radius: 12px;
+    padding: 12px 7px 11px; text-align: left;
 }
-.kc-track-icon { font-size: 1.5rem; line-height: 1; }
-.kc-track-label { font-weight: 700; color: var(--kc-navy); font-size: 0.82rem; margin-top: 4px; }
-.kc-track-note { color: var(--kc-text-secondary); font-size: 0.7rem; margin-top: 2px; }
-.kc-landing-start button { font-size: 1rem !important; padding: 12px 0 !important; }
+.kc-track-icon { font-size: 1.2rem; line-height: 1; }
+.kc-track-label { font-weight: 800; color: var(--kc-navy); font-size: .75rem; margin-top: 6px; }
+.kc-track-note { color: var(--kc-text-secondary); font-size: .65rem; line-height: 1.25; margin-top: 2px; }
+.kc-landing-start { margin-top: 21px; max-width: 270px; }
+.kc-landing-start button { font-size: .9rem !important; padding: 11px 15px !important; }
+
+@media (max-width: 760px) {
+    .gradio-container { padding: 20px 16px 34px !important; }
+    #kc-header { grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding-bottom: 18px; }
+    #kc-header img { width: 40px; height: 40px; }
+    .kc-header-note { display: none; }
+    #kc-title-block h1 { font-size: 1.6rem; }
+    #kc-title-block p { font-size: .7rem; line-height: 1.35; }
+    .kc-badge-row { margin: 13px 0 18px; }
+    .kc-badge { font-size: .62rem; }
+    .kc-stepper { padding: 12px 8px; overflow-x: auto; justify-content: flex-start; }
+    .kc-step { min-width: 64px; }.kc-step-line { min-width: 10px; }
+    #kc-tabs > .tab-nav { overflow-x: auto; justify-content: flex-start; }
+    #kc-tabs button { flex: 0 0 auto; font-size: .68rem; }
+    .kc-card { padding: 17px !important; border-radius: 14px !important; }
+    .kc-track-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 360px; }
+    .kc-landing-card { padding: 27px 22px !important; border-radius: 17px !important; }
+    .kc-landing-title { font-size: 2rem; }.kc-landing-card::before { right: -205px; }
+    .kc-continue button.primary { width: 100%; min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
 """
 
 TRACKED_PARTS = [
@@ -331,6 +402,42 @@ def _ollama_status_markdown() -> str:
     status = check_ollama_connection()
     icon = "✅" if (status.reachable and status.model_installed) else "⚠️"
     return f"{icon} {status.message}"
+
+
+def organize_onboarding(patient_words: str):
+    """Use local Gemma to prefill the editable PEO context form from free text."""
+    if not patient_words or not patient_words.strip():
+        return (
+            "Please describe what you want to do, what feels difficult, and any help you need.",
+            gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+        )
+
+    try:
+        intake = generate_onboarding_intake(patient_words.strip(), SYNTHETIC_PATIENT["task"])
+    except (OllamaUnavailableError, GemmaModelNotInstalledError, GemmaTimeoutError) as exc:
+        return f"⚠️ {exc}", gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+    except GemmaInvalidResponseError as exc:
+        return (
+            f"⚠️ Gemma could not organize this note: {exc}. Your words were not changed.",
+            gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+        )
+
+    missing = "\n".join(f"- {item}" for item in intake.missing_information) or "- None noted"
+    summary = (
+        f"**Gemma organized your note locally**  \n{intake.acknowledgement}\n\n"
+        f"**Connection to today's assigned activity**  \n{intake.task_connection}\n\n"
+        f"**You may still want to add**  \n{missing}\n\n"
+        "These fields are editable in Step 3 and will be used only as context for the PEO record."
+    )
+    return (
+        summary,
+        intake.daily_activity,
+        intake.difficulty_location,
+        intake.assistance_needed,
+        intake.discomfort_reported,
+        intake.independence_goal,
+        intake.patient_statement,
+    )
 
 
 def _metrics_markdown(metrics: dict, is_synthetic: bool) -> str:
@@ -618,9 +725,11 @@ def build_app() -> gr.Blocks:
             <div id="kc-header">
               <img src="{LOGO_DATA_URI}" alt="RecContinue logo" />
               <div id="kc-title-block">
+                <p class="kc-overline">Private rehabilitation record</p>
                 <h1>RecContinue</h1>
                 <p>Every movement has context. Every record should stay private.</p>
               </div>
+              <div class="kc-header-note">On this device</div>
             </div>
             <div class="kc-badge-row">
               <span class="kc-badge kc-badge-status">{STATUS_BADGE_TEXT}</span>
@@ -657,6 +766,20 @@ def build_app() -> gr.Blocks:
                             value=SYNTHETIC_PATIENT["selected_arm"],
                             label="Selected arm for this session",
                         )
+                    with gr.Group(elem_classes=["kc-card"]):
+                        gr.Markdown(
+                            '<p class="kc-card-title">Tell us what matters to you</p>'
+                            "In your own words, describe what you want to do, what makes it "
+                            "hard, and any help you need. Gemma will organize it into editable "
+                            "PEO context for your record; it will not change your therapist-assigned activity."
+                        )
+                        onboarding_words_tb = gr.Textbox(
+                            label="Your goal and what is difficult today",
+                            placeholder="For example: I want to put cups on the high shelf, but my arm gets tired and I ask my daughter for help.",
+                            lines=3,
+                        )
+                        organize_onboarding_btn = gr.Button("Organize with Gemma", variant="secondary")
+                        onboarding_summary_md = gr.Markdown("")
                     with gr.Group(elem_classes=["kc-card"]):
                         gr.Markdown(TASK_INSTRUCTIONS_MD)
                         could_not_complete_cb = gr.Checkbox(
@@ -862,6 +985,19 @@ def build_app() -> gr.Blocks:
                 tabs.select(fn=on_tab_select, outputs=stepper_html)
                 continue1_btn.click(fn=lambda: continue_to_step(1), outputs=[tabs, stepper_html])
                 continue3_btn.click(fn=lambda: continue_to_step(3), outputs=[tabs, stepper_html])
+                organize_onboarding_btn.click(
+                    fn=organize_onboarding,
+                    inputs=onboarding_words_tb,
+                    outputs=[
+                        onboarding_summary_md,
+                        daily_activity_tb,
+                        difficulty_location_tb,
+                        assistance_needed_tb,
+                        discomfort_reported_tb,
+                        independence_goal_tb,
+                        patient_statement_tb,
+                    ],
+                )
 
         start_session_btn.click(
             fn=lambda: (gr.Column(visible=False), gr.Column(visible=True)),
