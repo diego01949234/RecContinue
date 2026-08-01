@@ -25,6 +25,7 @@ from gemma_client import (
     OllamaUnavailableError,
     check_ollama_connection,
     generate_onboarding_intake,
+    generate_acknowledgment,
     generate_report,
 )
 from movement_analysis import (
@@ -40,7 +41,8 @@ from packet_export import (
     export_reviewed_report,
     import_packet,
 )
-from safety import validate_report_safety
+from safety import validate_report_safety, validate_text_safety
+from stt_client import WhisperUnavailableError, transcribe_audio
 import storage
 
 BASE_DIR = pathlib.Path(__file__).parent
@@ -465,28 +467,67 @@ def _metrics_markdown(metrics: dict, is_synthetic: bool) -> str:
 
 
 def use_synthetic_metrics_fallback():
-    return SYNTHETIC_METRICS, _metrics_markdown(SYNTHETIC_METRICS, is_synthetic=True)
+    return SYNTHETIC_METRICS, _metrics_markdown(SYNTHETIC_METRICS, is_synthetic=True), ""
+
+
+def _progress_markdown(progress: dict) -> str:
+    total = progress["total_frames"]
+    total_str = f"/{total}" if total else ""
+    angle = f"{progress['current_angle']}°" if progress["current_angle"] is not None else "—"
+    return (
+        f"Processing frame {progress['frame_index']}{total_str} · "
+        f"elbow angle ≈ {angle} · reps so far: {progress['reps_so_far']}"
+    )
 
 
 def analyze_video_handler(video_path, selected_arm):
     if video_path is None:
-        return None, "No video selected. Choose a file above, or use the synthetic metrics fallback.", None
+        yield None, "No video selected. Choose a file above, or use the synthetic metrics fallback.", None, ""
+        return
 
     try:
-        annotated_path, metrics = analyze_video(video_path, selected_arm)
+        for item in analyze_video(video_path, selected_arm):
+            if isinstance(item, dict):
+                yield gr.update(), gr.update(), gr.update(), _progress_markdown(item)
+            else:
+                annotated_path, metrics = item
+                yield annotated_path, _metrics_markdown(metrics, is_synthetic=False), metrics, ""
     except MovementAnalysisUnavailableError as exc:
-        return None, f"⚠️ {exc}", None
+        yield None, f"⚠️ {exc}", None, ""
     except NoPoseDetectedError as exc:
-        return (
+        yield (
             None,
             f"⚠️ {exc} Try a video with better lighting and the {selected_arm} arm fully in "
             "frame, or use the synthetic metrics fallback below.",
             None,
+            "",
         )
     except ValueError as exc:
-        return None, f"⚠️ {exc} Check that the file is a supported video format (e.g. MP4).", None
+        yield None, f"⚠️ {exc} Check that the file is a supported video format (e.g. MP4).", None, ""
 
-    return annotated_path, _metrics_markdown(metrics, is_synthetic=False), metrics
+
+def voice_frontdoor_handler(audio_path):
+    """Transcribe an optional voice note and safely pre-fill Tab 3."""
+    if audio_path is None:
+        return "", "", gr.update()
+
+    try:
+        transcript = transcribe_audio(audio_path)
+    except WhisperUnavailableError as exc:
+        return f"⚠️ {exc}", "", gr.update()
+
+    if not transcript.strip():
+        return "_No speech detected — you can skip this and continue to Step 2._", "", gr.update()
+
+    try:
+        acknowledgment = generate_acknowledgment(transcript, SYNTHETIC_PATIENT["task"])
+    except (OllamaUnavailableError, GemmaModelNotInstalledError, GemmaTimeoutError):
+        acknowledgment = ""
+
+    if acknowledgment and not validate_text_safety(acknowledgment).passed:
+        acknowledgment = ""
+
+    return f"**You said:** {transcript}", acknowledgment, gr.update(value=transcript)
 
 
 def _report_markdown(report_dict: dict) -> str:
@@ -791,6 +832,16 @@ def build_app() -> gr.Blocks:
                             lines=2,
                         )
                     with gr.Group(elem_classes=["kc-card"]):
+                        gr.Markdown(
+                            '<p class="kc-card-title">How are you feeling about today’s session? (optional)</p>'
+                            "Record a short voice note if you like — it is transcribed on this "
+                            "device only, and Gemma will just confirm today's assigned activity "
+                            "back to you. You can skip this entirely and continue straight to Step 2."
+                        )
+                        voice_input = gr.Audio(sources=["microphone"], type="filepath", label="Voice note")
+                        voice_transcript_md = gr.Markdown("")
+                        voice_ack_md = gr.Markdown("")
+                    with gr.Group(elem_classes=["kc-card"]):
                         gr.Markdown(PRIVACY_EXPLANATION_MD)
                     with gr.Row(elem_classes=["kc-continue"]):
                         continue1_btn = gr.Button("Continue to Step 2: Record →", variant="primary")
@@ -810,6 +861,7 @@ def build_app() -> gr.Blocks:
                         with gr.Row():
                             analyze_btn = gr.Button("Analyze video", variant="primary")
                             synthetic_fallback_btn = gr.Button("Use synthetic metrics fallback instead", variant="secondary")
+                        analysis_progress_md = gr.Markdown("")
                     with gr.Group(elem_classes=["kc-card"]):
                         annotated_output = gr.Video(label="Annotated output", interactive=False)
                         metrics_display = gr.Markdown(_metrics_markdown({}, is_synthetic=False))
@@ -825,15 +877,16 @@ def build_app() -> gr.Blocks:
                     analyze_btn.click(
                         fn=analyze_video_handler,
                         inputs=[video_input, arm_radio],
-                        outputs=[annotated_output, metrics_display, metrics_state],
+                        outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md],
                     )
                     video_input.stop_recording(
                         fn=analyze_video_handler,
                         inputs=[video_input, arm_radio],
-                        outputs=[annotated_output, metrics_display, metrics_state],
+                        outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md],
                     )
                     synthetic_fallback_btn.click(
-                        fn=use_synthetic_metrics_fallback, outputs=[metrics_state, metrics_display]
+                        fn=use_synthetic_metrics_fallback,
+                        outputs=[metrics_state, metrics_display, analysis_progress_md],
                     )
                     continue2_btn.click(
                         fn=continue_from_record,
@@ -874,6 +927,12 @@ def build_app() -> gr.Blocks:
                         )
                     with gr.Row(elem_classes=["kc-continue"]):
                         continue3_btn = gr.Button("Continue to Step 4: Generate Record →", variant="primary")
+
+                    voice_input.stop_recording(
+                        fn=voice_frontdoor_handler,
+                        inputs=[voice_input],
+                        outputs=[voice_transcript_md, voice_ack_md, patient_statement_tb],
+                    )
     
                 with gr.Tab("4 · Private Session Record", id=3):
                     with gr.Group(elem_classes=["kc-card"]):

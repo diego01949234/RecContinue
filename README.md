@@ -74,6 +74,17 @@ project, the Kaggle Writeup itself is drafted outside of Claude Code:
   tries to mark a still-flagged report reviewed (a clinician note can
   still be saved without marking it reviewed). This closes out P0 per
   SPEC.md's acceptance criteria (section 21).
+- ✅ **Post-P0 addition — Analyze progress + Tab 1 voice front-door**:
+  `movement_analysis.analyze_video()` now yields live progress (frame
+  count, current elbow angle, running rep count) while it runs, shown on
+  Tab 2 instead of a blank wait. Tab 1 adds an optional voice note,
+  transcribed locally with `faster-whisper` (`stt_client.py`), that gets
+  a short Gemma acknowledgment reconfirming the one therapist-assigned
+  task (never a new one) and pre-fills Tab 3's patient statement. The
+  acknowledgment is scanned by the same `safety.py` flagged-phrase
+  checker used on the full PEO report before it's ever shown. Both
+  features are additive and skippable — see
+  `docs/superpowers/specs/2026-08-01-analyze-progress-and-voice-frontdoor-design.md`.
 - ⬜ **Phase 6 — Submission Support**: not started (see note above).
 
 ## Why this matters
@@ -151,6 +162,12 @@ download the MediaPipe Pose Landmarker model — see
 place it. Without the model file, Tab 2 shows a clear setup message
 instead of crashing, and the synthetic metrics fallback still works.
 
+To use Tab 1's optional voice front-door, no extra setup is needed beyond
+`pip install -r requirements.txt` — `faster-whisper` downloads its small
+model automatically the first time you record a voice note, then caches
+it locally. Without a microphone or without `faster-whisper` installed,
+Tab 1 shows a clear message and the rest of the flow is unaffected.
+
 Then run the app:
 
 ```bash
@@ -194,7 +211,7 @@ source .venv/bin/activate
 python -m pytest -v
 ```
 
-48 tests, all passing, covering:
+77 tests, all passing, covering:
 
 - `tests/test_report_schema.py` — Pydantic schema validation (valid
   report, missing required field, wrong field type, default
@@ -271,6 +288,19 @@ additionally exercised manually end-to-end (see Known limitations).
   model actually tends to write (the flagged-phrase list is exercised
   against hand-written test fixtures, not live model output, since no
   Ollama instance was available here).
+- The Tab 1 voice front-door (transcription → Gemma acknowledgment →
+  Tab 3 pre-fill) was verified with `transcribe_audio`,
+  `generate_acknowledgment`, and `validate_text_safety` mocked in
+  `tests/test_app_handlers.py`; it has not been exercised with a real
+  microphone or a live Ollama instance in this environment. Before the
+  live demo, do one manual pass with a real mic and `ollama serve`
+  running to confirm end-to-end latency and audio quality.
+- The Tab 2 live progress display was verified against a mocked
+  MediaPipe/OpenCV pipeline in `tests/test_analyze_progress.py`; do one
+  manual pass with a real recorded/uploaded video before the live demo
+  to confirm the progress text updates smoothly rather than flooding
+  the UI (adjust `PROGRESS_YIELD_EVERY_N_FRAMES` in
+  `movement_analysis.py` if it does).
 - Phase 6 (Submission Support) has not been started — per an explicit
   project decision, the Kaggle Writeup and other presentation/pitch
   materials are handled outside of Claude Code, not by this build.
