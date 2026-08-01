@@ -57,18 +57,23 @@ class SafetyValidationResult:
         return STATUS_PASSED if self.passed else STATUS_REQUIRES_MANUAL_EDITING
 
 
-def validate_report_safety(report: RecContinueReport) -> SafetyValidationResult:
-    """Scan report.clinical_text_sections() for FLAGGED_PHRASES.
-
-    Deliberately excludes report_status and safety_notice, which are
-    disclaimer/label fields rather than AI-generated clinical content
-    (see RecContinueReport.clinical_text_sections()).
-    """
+def _scan_sections(sections: list[str]) -> SafetyValidationResult:
+    """Scan text sections using the single shared flagged-phrase list."""
     flagged: list[FlaggedPhrase] = []
-    for text in report.clinical_text_sections():
+    for text in sections:
         for sentence in _split_sentences(text):
             lowered = sentence.lower()
             for phrase in FLAGGED_PHRASES:
                 if phrase in lowered:
                     flagged.append(FlaggedPhrase(phrase=phrase, sentence=sentence))
     return SafetyValidationResult(passed=not flagged, flagged=flagged)
+
+
+def validate_report_safety(report: RecContinueReport) -> SafetyValidationResult:
+    """Scan report clinical text while excluding label/disclaimer fields."""
+    return _scan_sections(report.clinical_text_sections())
+
+
+def validate_text_safety(text: str) -> SafetyValidationResult:
+    """Scan one free-text response using the report safety rules."""
+    return _scan_sections([text])

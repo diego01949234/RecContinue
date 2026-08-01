@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from safety import STATUS_PASSED, STATUS_REQUIRES_MANUAL_EDITING, validate_report_safety  # noqa: E402
+from safety import STATUS_PASSED, STATUS_REQUIRES_MANUAL_EDITING, validate_report_safety, validate_text_safety  # noqa: E402
 from schemas import RecContinueReport  # noqa: E402
 
 CLEAN_REPORT = {
@@ -115,3 +115,21 @@ def test_does_not_mutate_the_report():
     original = report.model_copy(deep=True)
     validate_report_safety(report)
     assert report == original
+
+
+def test_validate_text_safety_passes_clean_text():
+    result = validate_text_safety("Thanks for sharing that. Today's reach-and-place task remains assigned by your therapist.")
+    assert result.passed is True
+    assert result.flagged == []
+
+
+def test_validate_text_safety_flags_recommended_exercise():
+    result = validate_text_safety("You should perform additional overhead reaches to help with that.")
+    assert result.passed is False
+    assert any(f.phrase == "should perform" for f in result.flagged)
+
+
+def test_validate_text_safety_uses_same_scan_as_report_safety():
+    result = validate_text_safety("This is unsafe to continue without supervision.")
+    assert result.passed is False
+    assert any(f.phrase == "unsafe" for f in result.flagged)
