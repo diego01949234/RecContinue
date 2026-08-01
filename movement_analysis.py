@@ -71,6 +71,7 @@ CONFIDENCE_THRESHOLD = 0.5
 BRAND_TEAL = (154, 168, 31)  # BGR for #1FA89A
 BRAND_CORAL = (104, 122, 255)  # BGR for #FF7A68
 BRAND_MINT = (243, 247, 234)  # BGR for #EAF7F3
+NODE_OUTLINE = (24, 24, 24)  # BGR charcoal: keeps nodes visible on light scenes
 
 # Recorded clips can arrive at high camera resolution, but the 2D angle/ratio
 # proxies used here need only a modest number of pixels. Capping the longest
@@ -529,16 +530,24 @@ def _draw_overlay(frame, frame_data: dict, palm_point: Optional[dict], width: in
     def px(point: dict) -> tuple[int, int]:
         return int(point["x"] * width), int(point["y"] * height)
 
-    for key in ("nose", "left_ear", "right_ear"):
-        cv2.circle(frame, px(frame_data[key]), 4, BRAND_MINT, -1)
+    def node(point: dict, color=BRAND_CORAL, radius: int = 7) -> None:
+        """Draw a high-contrast MediaPipe landmark node for the result video."""
+        cv2.circle(frame, px(point), radius + 2, NODE_OUTLINE, -1)
+        cv2.circle(frame, px(point), radius, color, -1)
 
-    cv2.line(frame, px(frame_data["left_shoulder"]), px(frame_data["right_shoulder"]), BRAND_TEAL, 2)
+    for key in ("nose", "left_ear", "right_ear"):
+        node(frame_data[key], BRAND_MINT, 5)
+
+    cv2.line(frame, px(frame_data["left_shoulder"]), px(frame_data["right_shoulder"]), BRAND_TEAL, 3)
     cv2.line(frame, px(frame_data["left_shoulder" if frame_data["_arm"] == "left" else "right_shoulder"]),
-              px(frame_data["elbow"]), BRAND_TEAL, 2)
-    cv2.line(frame, px(frame_data["elbow"]), px(frame_data["wrist"]), BRAND_TEAL, 2)
+              px(frame_data["elbow"]), BRAND_TEAL, 3)
+    cv2.line(frame, px(frame_data["elbow"]), px(frame_data["wrist"]), BRAND_TEAL, 3)
+    node(frame_data["left_shoulder" if frame_data["_arm"] == "left" else "right_shoulder"], BRAND_MINT)
+    node(frame_data["elbow"])
+    node(frame_data["wrist"])
 
     if palm_point is not None:
-        cv2.circle(frame, px(palm_point), 6, BRAND_CORAL, -1)
+        node(palm_point, BRAND_TEAL, 6)
 
 
 def _draw_head_overlay(frame, frame_data: dict, width: int, height: int) -> None:
@@ -547,22 +556,33 @@ def _draw_head_overlay(frame, frame_data: dict, width: int, height: int) -> None
     def px(point: dict) -> tuple[int, int]:
         return int(point["x"] * width), int(point["y"] * height)
 
-    cv2.line(frame, px(frame_data["left_ear"]), px(frame_data["right_ear"]), BRAND_TEAL, 2)
+    cv2.line(frame, px(frame_data["left_ear"]), px(frame_data["right_ear"]), BRAND_TEAL, 3)
     for key in ("nose", "left_ear", "right_ear"):
-        cv2.circle(frame, px(frame_data[key]), 5, BRAND_CORAL, -1)
+        cv2.circle(frame, px(frame_data[key]), 8, NODE_OUTLINE, -1)
+        cv2.circle(frame, px(frame_data[key]), 6, BRAND_CORAL, -1)
 
 
 def _draw_hand_overlay(frame, hand_landmarks: list[dict], width: int, height: int) -> None:
-    """Draw only palm/wrist and fingertips needed for the open-close measure."""
+    """Draw the detected MediaPipe Hand skeleton (all 21 nodes) for playback."""
     def px(point: dict) -> tuple[int, int]:
         return int(point["x"] * width), int(point["y"] * height)
 
-    wrist = hand_landmarks[0]
-    cv2.circle(frame, px(wrist), 6, BRAND_TEAL, -1)
-    for tip_index in (4, 8, 12, 16, 20):
-        tip = hand_landmarks[tip_index]
-        cv2.line(frame, px(wrist), px(tip), BRAND_TEAL, 2)
-        cv2.circle(frame, px(tip), 5, BRAND_CORAL, -1)
+    # MediaPipe Hands topology. We draw this only for the selected detected
+    # hand, so the visible nodes always correspond to the palm metric.
+    connections = (
+        (0, 1), (1, 2), (2, 3), (3, 4),
+        (0, 5), (5, 6), (6, 7), (7, 8),
+        (0, 9), (9, 10), (10, 11), (11, 12),
+        (0, 13), (13, 14), (14, 15), (15, 16),
+        (0, 17), (17, 18), (18, 19), (19, 20),
+        (5, 9), (9, 13), (13, 17),
+    )
+    for start, end in connections:
+        cv2.line(frame, px(hand_landmarks[start]), px(hand_landmarks[end]), BRAND_TEAL, 2)
+    for index, landmark in enumerate(hand_landmarks):
+        color = BRAND_TEAL if index == 0 else BRAND_CORAL
+        cv2.circle(frame, px(landmark), 5, NODE_OUTLINE, -1)
+        cv2.circle(frame, px(landmark), 3, color, -1)
 
 
 PROGRESS_YIELD_EVERY_N_FRAMES = 5

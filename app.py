@@ -1074,7 +1074,10 @@ def build_app() -> gr.Blocks:
                     demo_test_btn = gr.Button("Load demo test result", variant="secondary")
                     analysis_progress_md = gr.Markdown("", elem_classes=["kc-analysis-progress"])
                 with gr.Group(elem_classes=["kc-card"]):
-                    annotated_output = gr.Video(label="MediaPipe annotated result", interactive=False)
+                    annotated_output = gr.Video(
+                        label="MediaPipe annotated result — detected nodes & connections",
+                        interactive=False,
+                    )
                     metrics_display = gr.Markdown(_metrics_markdown({}, is_synthetic=False))
                     report_next_btn = gr.Button("Create Gemma report →", variant="primary")
 
