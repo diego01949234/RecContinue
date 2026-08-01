@@ -76,6 +76,20 @@ project, the Kaggle Writeup itself is drafted outside of Claude Code:
   SPEC.md's acceptance criteria (section 21).
 - ⬜ **Phase 6 — Submission Support**: not started (see note above).
 
+## Why this matters
+
+In Taiwan alone, the population needing rehabilitation services exceeds
+750,000, while physical/occupational therapists can meet only 40–50% of
+that market demand — a gap driven by therapist shortages, long travel
+times, and the cost of frequent in-person follow-up, especially in
+underserved areas (source: companion vision deck, "AI職能治療智慧輔助系統
+/ AI-Driven Remote Rehabilitation Ecosystem," citing Taiwan long-term-care
+and physical-therapy staffing news coverage). The time between clinic
+visits becomes a documentation blind spot precisely for the patients who
+can least afford it. RecContinue targets that gap: not by replacing the
+therapist, but by giving patients a private way to keep a therapist's
+assigned activity documented between visits.
+
 ## Why on-device, why Gemma
 
 Rehabilitation sessions involve video of a patient moving inside their
