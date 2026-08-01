@@ -16,12 +16,15 @@ from pydantic import ValidationError
 
 from prompts import (
     ACKNOWLEDGMENT_SYSTEM_PROMPT,
+    ONBOARDING_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     build_acknowledgment_prompt,
+    build_onboarding_prompt,
+    build_onboarding_repair_prompt,
     build_repair_prompt,
     build_user_prompt,
 )
-from schemas import RecContinueReport
+from schemas import OnboardingIntake, RecContinueReport
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_MODEL = "gemma4:e2b"
@@ -163,6 +166,44 @@ def _parse_and_validate(raw_text: str, session_id: str) -> RecContinueReport:
     data: Any = json.loads(json_text)
     data.setdefault("session_id", session_id)
     return RecContinueReport.model_validate(data)
+
+
+def _parse_and_validate_intake(raw_text: str) -> OnboardingIntake:
+    data: Any = json.loads(_extract_json_text(raw_text))
+    return OnboardingIntake.model_validate(data)
+
+
+def generate_onboarding_intake(
+    patient_words: str,
+    assigned_task: str,
+    host: str = DEFAULT_OLLAMA_HOST,
+    model: str = DEFAULT_MODEL,
+    timeout: int = GENERATE_TIMEOUT_SECONDS,
+) -> OnboardingIntake:
+    """Organize a patient's free-text intake locally without changing their task.
+
+    As with report generation, exactly one repair attempt is allowed when Gemma
+    does not return JSON that matches the constrained intake schema.
+    """
+    prompt = build_onboarding_prompt(patient_words, assigned_task)
+    raw_text = _call_ollama_generate(
+        prompt, host, model, timeout, system=ONBOARDING_SYSTEM_PROMPT
+    )
+    try:
+        return _parse_and_validate_intake(raw_text)
+    except (json.JSONDecodeError, ValidationError, AttributeError) as first_error:
+        repair_prompt = build_onboarding_repair_prompt(raw_text, str(first_error))
+        try:
+            repaired_text = _call_ollama_generate(
+                repair_prompt, host, model, timeout, system=ONBOARDING_SYSTEM_PROMPT
+            )
+            return _parse_and_validate_intake(repaired_text)
+        except (json.JSONDecodeError, ValidationError, AttributeError) as second_error:
+            raise GemmaInvalidResponseError(
+                f"Gemma intake output did not match the required schema after one repair "
+                f"attempt: {second_error}",
+                raw_text=raw_text,
+            ) from second_error
 
 
 def generate_report(

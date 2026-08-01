@@ -41,6 +41,28 @@ If landmark confidence is low, state that the camera-based observation requires 
 
 Return JSON only."""
 
+ONBOARDING_SYSTEM_PROMPT = """You are RecContinue, an offline rehabilitation
+intake assistant running on the user's device.
+
+Turn a patient's own words into a short, editable summary for an occupational
+therapy Person-Environment-Occupation (PEO) record. The summary is used only
+to prefill a form that the patient can edit before it is included in a report.
+
+You must:
+1. Preserve the patient's meaning and clearly state when information was not provided.
+2. Separate the daily activity, environment, assistance, discomfort/fatigue,
+   independence goal, and the patient's own statement.
+3. List only neutral, useful missing information.
+4. Explain how the patient's words relate to the already assigned activity,
+   without changing that activity.
+5. Return valid JSON matching the requested schema, with no markdown.
+
+You must not diagnose, assess severity, judge safety or normality, recommend
+an exercise or treatment, prescribe a new activity, or claim the assigned
+activity is appropriate for the patient. Do not invent symptoms or history.
+If the patient mentions something outside the supplied text, say it was not
+provided. Return JSON only."""
+
 REPORT_JSON_SCHEMA_HINT = {
     "session_id": "string",
     "report_status": "AI-generated draft requiring clinician review",
@@ -55,6 +77,18 @@ REPORT_JSON_SCHEMA_HINT = {
     "patient_friendly_recap": "string",
     "limitations": ["string"],
     "safety_notice": "string",
+}
+
+ONBOARDING_JSON_SCHEMA_HINT = {
+    "acknowledgement": "short neutral summary of what the patient described",
+    "daily_activity": "string or Not provided",
+    "difficulty_location": "string or Not provided",
+    "assistance_needed": "string or Not provided",
+    "discomfort_reported": "string or Not provided",
+    "independence_goal": "string or Not provided",
+    "patient_statement": "first-person paraphrase or the supplied statement",
+    "missing_information": ["neutral missing detail"],
+    "task_connection": "neutral connection to the already assigned activity only",
 }
 
 
@@ -79,6 +113,21 @@ def build_user_prompt(
     return (
         "Organize the following locally captured session data into a RecContinue "
         "PEO documentation draft. Return JSON only, matching output_schema.\n\n"
+        f"{json.dumps(payload, indent=2)}"
+    )
+
+
+def build_onboarding_prompt(patient_words: str, assigned_task: str) -> str:
+    """Build the local-only intake prompt for the Tab 1 conversational form."""
+    payload = {
+        "patient_words": patient_words,
+        "assigned_task": assigned_task,
+        "output_schema": ONBOARDING_JSON_SCHEMA_HINT,
+    }
+    return (
+        "Organize the patient words below into editable PEO intake fields. The "
+        "assigned task was chosen by a therapist and must not be changed or "
+        "recommended as treatment. Return JSON only, matching output_schema.\n\n"
         f"{json.dumps(payload, indent=2)}"
     )
 
@@ -121,4 +170,15 @@ def build_acknowledgment_prompt(transcript: str, assigned_task: str) -> str:
         f'The patient\'s assigned activity today is: "{assigned_task}".\n\n'
         f'The patient said: "{transcript}"\n\n'
         "Reply following the rules in your system prompt."
+    )
+
+
+def build_onboarding_repair_prompt(previous_output: str, validation_error: str) -> str:
+    """Build a one-shot schema repair prompt for a local intake response."""
+    return (
+        "Your previous intake response could not be parsed as valid JSON.\n\n"
+        f"Previous response:\n{previous_output}\n\n"
+        f"Validation error:\n{validation_error}\n\n"
+        "Re-emit only a corrected JSON object matching this output_schema:\n"
+        f"{json.dumps(ONBOARDING_JSON_SCHEMA_HINT, indent=2)}"
     )

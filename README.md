@@ -115,6 +115,13 @@ and drafting clinician follow-up questions, without diagnosing or
 recommending treatment. See SPEC.md sections 4, 11, and 13 for the full
 rationale and the exact system prompt.
 
+Gemma also powers the optional text onboarding field on Tab 1. A patient can
+describe what they want to do and what is difficult in their own words; Gemma
+turns that into editable Person-Environment-Occupation context and identifies
+missing details. It never changes the activity already assigned by the
+therapist, and the generated context is visible for patient editing before it
+can appear in a clinician packet.
+
 ## Project structure
 
 ```text

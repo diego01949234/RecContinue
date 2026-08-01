@@ -4,6 +4,25 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class OnboardingIntake(BaseModel):
+    """Gemma-organized patient context used to prefill the PEO report form.
+
+    This is an intake summary, not a diagnosis or a replacement for a therapist's
+    assigned activity. Keeping it structured means the patient can review and
+    edit every field before it becomes part of a session record.
+    """
+
+    acknowledgement: str
+    daily_activity: str
+    difficulty_location: str
+    assistance_needed: str
+    discomfort_reported: str
+    independence_goal: str
+    patient_statement: str
+    missing_information: list[str] = Field(default_factory=list)
+    task_connection: str
+
+
 class RecContinueReport(BaseModel):
     session_id: str
     report_status: str = "AI-generated draft requiring clinician review"
