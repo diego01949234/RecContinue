@@ -1060,8 +1060,8 @@ def build_app() -> gr.Blocks:
                     gr.Markdown("<p class=\"kc-card-title\">Record with your camera</p>"
                                 "Use the original recording flow. MediaPipe samples every 12 frames for speed.")
                     arm_radio = gr.Radio(["left", "right"], value=SYNTHETIC_PATIENT["selected_arm"], label="Arm to analyze")
-                    video_input = gr.Video(sources=["webcam"], label="Camera recording")
-                    analyze_btn = gr.Button("Analyze recording", variant="primary")
+                    video_input = gr.Video(sources=["webcam"], format="mp4", label="Camera recording")
+                    analyze_btn = gr.Button("Analyze recording (after Stop)", variant="primary")
                     analysis_progress_md = gr.Markdown("", elem_classes=["kc-analysis-progress"])
                 with gr.Group(elem_classes=["kc-card"]):
                     annotated_output = gr.Video(label="MediaPipe annotated result", interactive=False)
@@ -1086,11 +1086,6 @@ def build_app() -> gr.Blocks:
                 outputs=[selected_module_state, module_summary_md, tabs, stepper_html],
             ).then(fn=_module_markdown, inputs=selected_module_state, outputs=selected_module_md)
             analyze_btn.click(
-                fn=analyze_video_handler,
-                inputs=[video_input, arm_radio, selected_module_state],
-                outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md],
-            )
-            video_input.stop_recording(
                 fn=analyze_video_handler,
                 inputs=[video_input, arm_radio, selected_module_state],
                 outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md],
