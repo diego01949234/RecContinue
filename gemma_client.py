@@ -17,14 +17,16 @@ from pydantic import ValidationError
 from prompts import (
     ACKNOWLEDGMENT_SYSTEM_PROMPT,
     ONBOARDING_SYSTEM_PROMPT,
+    OBSERVATION_RECOMMENDATION_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     build_acknowledgment_prompt,
     build_onboarding_prompt,
     build_onboarding_repair_prompt,
+    build_observation_recommendation_prompt,
     build_repair_prompt,
     build_user_prompt,
 )
-from schemas import OnboardingIntake, RecContinueReport
+from schemas import ObservationRecommendation, OnboardingIntake, RecContinueReport
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_MODEL = "gemma4:e2b"
@@ -135,6 +137,11 @@ def _call_ollama_generate(
         "system": system,
         "prompt": prompt,
         "stream": False,
+        # Gemma 4 supports a separate reasoning channel. RecContinue needs a
+        # concise, schema-constrained documentation draft, so suppress it to
+        # avoid making a local report request wait behind unnecessary thinking.
+        "think": False,
+        "keep_alive": "5m",
     }
     if json_format:
         request_body["format"] = "json"
@@ -171,6 +178,38 @@ def _parse_and_validate(raw_text: str, session_id: str) -> RecContinueReport:
 def _parse_and_validate_intake(raw_text: str) -> OnboardingIntake:
     data: Any = json.loads(_extract_json_text(raw_text))
     return OnboardingIntake.model_validate(data)
+
+
+def _parse_and_validate_observation_recommendation(raw_text: str) -> ObservationRecommendation:
+    data: Any = json.loads(_extract_json_text(raw_text))
+    return ObservationRecommendation.model_validate(data)
+
+
+def recommend_observation_module(
+    patient_words: str,
+    host: str = DEFAULT_OLLAMA_HOST,
+    model: str = DEFAULT_MODEL,
+    timeout: int = GENERATE_TIMEOUT_SECONDS,
+) -> ObservationRecommendation:
+    """Choose one existing camera observation view from a patient's own words.
+
+    The constrained schema prevents the model from creating a new activity or
+    prescribing rehabilitation; callers show this only as a selectable UI hint.
+    """
+    raw_text = _call_ollama_generate(
+        build_observation_recommendation_prompt(patient_words),
+        host,
+        model,
+        timeout,
+        system=OBSERVATION_RECOMMENDATION_SYSTEM_PROMPT,
+    )
+    try:
+        return _parse_and_validate_observation_recommendation(raw_text)
+    except (json.JSONDecodeError, ValidationError, AttributeError) as exc:
+        raise GemmaInvalidResponseError(
+            f"Gemma observation suggestion did not match the required schema: {exc}",
+            raw_text=raw_text,
+        ) from exc
 
 
 def generate_onboarding_intake(
