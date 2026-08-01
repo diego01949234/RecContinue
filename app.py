@@ -379,7 +379,7 @@ def continue_from_record(metrics_state):
     if not metrics_state:
         return (
             gr.Tabs(), _stepper_html(1),
-            "⚠️ Please record a video and complete MediaPipe analysis before generating a report.",
+            "⚠️ Please record a video, press **Analyze recording**, and wait for the annotated nodes before creating a Gemma report.",
         )
     return gr.Tabs(selected=2), _stepper_html(2), ""
 
@@ -1111,7 +1111,14 @@ def build_app() -> gr.Blocks:
                 fn=use_synthetic_demo_session,
                 outputs=[metrics_state, metrics_display, analysis_progress_md],
             )
-            report_next_btn.click(fn=lambda: gr.Tabs(selected=2), outputs=tabs)
+            # Do not let the user enter the reporting step with an empty
+            # browser-local State. This makes the required sequence obvious
+            # and prevents the confusing "No MediaPipe results" message.
+            report_next_btn.click(
+                fn=continue_from_record,
+                inputs=metrics_state,
+                outputs=[tabs, stepper_html, analysis_progress_md],
+            )
             voice_input.stop_recording(
                 fn=voice_frontdoor_handler,
                 inputs=[voice_input, selected_module_state],

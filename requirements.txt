@@ -8,6 +8,8 @@ pytest==9.1.1
 # second, conflicting OpenCV wheel and stays compatible with NumPy 1.26.
 opencv-contrib-python==4.10.0.84
 mediapipe==0.10.21
+# Bundled local FFmpeg used to make annotated result videos browser-playable.
+imageio-ffmpeg==0.6.0
 # NumPy 1.26 has compatible macOS wheels for the local Gradio/OpenCV stack.
 numpy==1.26.4
 faster-whisper==1.1.1

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import pathlib
+import subprocess
 import tempfile
 import uuid
 from dataclasses import dataclass, field
@@ -105,6 +106,41 @@ def _capped_frame_size(width: int, height: int, max_dimension: int = MAX_ANALYSI
         return width, height
     scale = max_dimension / longest
     return max(2, int(width * scale)), max(2, int(height * scale))
+
+
+def _browser_playable_video(video_path: str) -> str:
+    """Return an H.264 MP4 that Safari/Chromium can play inside Gradio.
+
+    OpenCV's default ``mp4v`` writer successfully saves our landmark overlay,
+    but it is not reliably decodable by browser video elements (which presents
+    as ``0:00 / NaN``).  imageio-ffmpeg bundles a local executable, so this
+    conversion stays offline and does not depend on a system FFmpeg install.
+    If conversion is unavailable, retain the original video rather than
+    discarding a completed MediaPipe result.
+    """
+    source = pathlib.Path(video_path)
+    if not source.is_file() or source.stat().st_size == 0:
+        return video_path
+    converted = source.with_name(f"{source.stem}_browser.mp4")
+    try:
+        import imageio_ffmpeg
+
+        completed = subprocess.run(
+            [
+                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", str(source),
+                "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart", str(converted),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=False,
+        )
+        if completed.returncode == 0 and converted.is_file() and converted.stat().st_size > 0:
+            return str(converted)
+    except (ImportError, OSError, subprocess.SubprocessError):
+        pass
+    return video_path
 
 
 class NoPoseDetectedError(Exception):
@@ -647,7 +683,7 @@ def _analyze_palm_video(video_path: str, selected_arm: Arm, output_path: Optiona
         writer.release()
         landmarker.close()
 
-    yield output_path, compute_palm_closure_metrics(hand_frames, fps, selected_arm)
+    yield _browser_playable_video(output_path), compute_palm_closure_metrics(hand_frames, fps, selected_arm)
 
 
 def _analyze_head_video(video_path: str, output_path: Optional[str] = None):
@@ -722,7 +758,7 @@ def _analyze_head_video(video_path: str, output_path: Optional[str] = None):
     if not frames_data:
         raise NoPoseDetectedError("No pose was detected in this video.")
 
-    yield output_path, compute_head_turn_metrics(frames_data, fps)
+    yield _browser_playable_video(output_path), compute_head_turn_metrics(frames_data, fps)
 
 
 def _analyze_arm_video(video_path: str, selected_arm: Arm, output_path: Optional[str] = None):
@@ -808,7 +844,7 @@ def _analyze_arm_video(video_path: str, selected_arm: Arm, output_path: Optional
         raise NoPoseDetectedError("No pose was detected in this video.")
 
     metrics = compute_session_metrics(frames_data, fps, selected_arm)
-    yield output_path, metrics
+    yield _browser_playable_video(output_path), metrics
 
 
 def analyze_video(
@@ -951,4 +987,4 @@ def finalize_live_session(session: LiveSession):
         metrics = compute_head_turn_metrics(session.frames_data, LIVE_STREAM_FPS)
     else:
         metrics = compute_session_metrics(session.frames_data, LIVE_STREAM_FPS, selected_arm)
-    return session.output_path, metrics, session.timeseries
+    return _browser_playable_video(session.output_path), metrics, session.timeseries
