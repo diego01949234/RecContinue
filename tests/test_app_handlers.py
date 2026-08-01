@@ -58,3 +58,118 @@ def test_use_synthetic_metrics_fallback_clears_progress_text():
     metrics, markdown, progress = app.use_synthetic_metrics_fallback()
     assert metrics == app.SYNTHETIC_METRICS
     assert progress == ""
+
+
+def test_voice_frontdoor_handler_no_audio_is_a_noop():
+    transcript_md, acknowledgment_md, statement_update = app.voice_frontdoor_handler(None)
+    assert transcript_md == ""
+    assert acknowledgment_md == ""
+    assert "value" not in statement_update
+
+
+def test_voice_frontdoor_handler_transcribes_and_acknowledges():
+    with patch("app.transcribe_audio", return_value="My arm feels stiff today."), patch(
+        "app.generate_acknowledgment",
+        return_value="Thanks for sharing. The assigned reach-and-place cup task remains unchanged.",
+    ):
+        transcript_md, acknowledgment_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert "My arm feels stiff today." in transcript_md
+    assert "reach-and-place cup task" in acknowledgment_md.lower()
+    assert statement_update["value"] == "My arm feels stiff today."
+
+
+def test_voice_frontdoor_handler_suppresses_flagged_acknowledgment():
+    with patch("app.transcribe_audio", return_value="My arm feels stiff today."), patch(
+        "app.generate_acknowledgment", return_value="You have a diagnosed rotator cuff injury."
+    ):
+        transcript_md, acknowledgment_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert acknowledgment_md == ""
+    assert "My arm feels stiff today." in transcript_md
+    assert statement_update["value"] == "My arm feels stiff today."
+
+
+def test_voice_frontdoor_handler_whisper_unavailable_does_not_crash():
+    with patch("app.transcribe_audio", side_effect=app.WhisperUnavailableError("faster-whisper not installed")):
+        transcript_md, acknowledgment_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert "faster-whisper not installed" in transcript_md
+    assert acknowledgment_md == ""
+    assert "value" not in statement_update
+
+
+def test_voice_frontdoor_handler_gemma_unavailable_still_prefills_statement():
+    with patch("app.transcribe_audio", return_value="My arm feels stiff today."), patch(
+        "app.generate_acknowledgment", side_effect=app.OllamaUnavailableError("no ollama")
+    ):
+        transcript_md, acknowledgment_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert acknowledgment_md == ""
+    assert statement_update["value"] == "My arm feels stiff today."
+
+
+def test_voice_frontdoor_handler_no_speech_detected():
+    with patch("app.transcribe_audio", return_value="   "):
+        transcript_md, acknowledgment_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert "No speech detected" in transcript_md
+    assert acknowledgment_md == ""
+    assert "value" not in statement_update
+
+
+def test_voice_frontdoor_handler_no_audio_is_a_noop():
+    transcript_md, ack_md, statement_update = app.voice_frontdoor_handler(None)
+    assert transcript_md == ""
+    assert ack_md == ""
+    assert "value" not in statement_update
+
+
+def test_voice_frontdoor_handler_transcribes_and_acknowledges():
+    with patch("app.transcribe_audio", return_value="My arm feels stiff today."), \
+         patch(
+             "app.generate_acknowledgment",
+             return_value="Thanks for sharing. Today's assigned activity is the reach-and-place cup task.",
+         ):
+        transcript_md, ack_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert "My arm feels stiff today." in transcript_md
+    assert "reach-and-place cup task" in ack_md.lower()
+    assert statement_update["value"] == "My arm feels stiff today."
+
+
+def test_voice_frontdoor_handler_suppresses_flagged_acknowledgment():
+    with patch("app.transcribe_audio", return_value="My arm feels stiff today."), \
+         patch("app.generate_acknowledgment", return_value="You have a diagnosed rotator cuff injury."):
+        transcript_md, ack_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert ack_md == ""
+    assert "My arm feels stiff today." in transcript_md
+    assert statement_update["value"] == "My arm feels stiff today."
+
+
+def test_voice_frontdoor_handler_whisper_unavailable_does_not_crash():
+    with patch("app.transcribe_audio", side_effect=app.WhisperUnavailableError("faster-whisper not installed")):
+        transcript_md, ack_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert "faster-whisper not installed" in transcript_md
+    assert ack_md == ""
+    assert "value" not in statement_update
+
+
+def test_voice_frontdoor_handler_gemma_unavailable_still_prefills_statement():
+    with patch("app.transcribe_audio", return_value="My arm feels stiff today."), \
+         patch("app.generate_acknowledgment", side_effect=app.OllamaUnavailableError("no ollama")):
+        transcript_md, ack_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert ack_md == ""
+    assert statement_update["value"] == "My arm feels stiff today."
+
+
+def test_voice_frontdoor_handler_no_speech_detected():
+    with patch("app.transcribe_audio", return_value="   "):
+        transcript_md, ack_md, statement_update = app.voice_frontdoor_handler("voice.wav")
+
+    assert "No speech detected" in transcript_md
+    assert ack_md == ""
+    assert "value" not in statement_update
