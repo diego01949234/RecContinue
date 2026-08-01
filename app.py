@@ -1066,10 +1066,10 @@ def build_app() -> gr.Blocks:
                 with gr.Group(elem_classes=["kc-card", "kc-camera-card"]):
                     selected_module_md = gr.Markdown("_Choose an observation first._")
                     gr.Markdown("<p class=\"kc-card-title\">Record with your camera</p>"
-                                "Use the original recording flow. MediaPipe samples every 12 frames for speed.")
+                                "Record, press Stop, then press Analyze once. Analysis runs locally and may take a moment.")
                     arm_radio = gr.Radio(["left", "right"], value=SYNTHETIC_PATIENT["selected_arm"], label="Arm to analyze")
-                    video_input = gr.Video(sources=["webcam"], format="mp4", label="Camera recording")
-                    analyze_btn = gr.Button("Analyze recording (after Stop)", variant="primary")
+                    video_input = gr.Video(sources=["webcam"], label="Camera recording")
+                    analyze_btn = gr.Button("Analyze recording", variant="primary")
                     analysis_progress_md = gr.Markdown("", elem_classes=["kc-analysis-progress"])
                 with gr.Group(elem_classes=["kc-card"]):
                     annotated_output = gr.Video(label="MediaPipe annotated result", interactive=False)
