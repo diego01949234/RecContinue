@@ -603,6 +603,14 @@ def _progress_markdown(progress: dict) -> str:
 
 
 def analyze_video_handler(video_path, selected_arm, observation_module="arm"):
+    # Gradio 6 can send either a filepath string or a FileData-like object,
+    # depending on whether the webcam recorder has just converted WebM to MP4.
+    # Normalize both shapes before handing the video to OpenCV.
+    if not isinstance(video_path, str):
+        if isinstance(video_path, dict):
+            video_path = video_path.get("path") or video_path.get("name")
+        else:
+            video_path = getattr(video_path, "path", None) or getattr(video_path, "name", None)
     if video_path is None:
         yield None, "Please record a video with your computer camera, then press \"Analyze recording\".", None, ""
         return
