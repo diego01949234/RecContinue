@@ -16,15 +16,32 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-try:
-    import cv2
-    import mediapipe as mp
-    from mediapipe.tasks.python import vision as mp_vision
-    from mediapipe.tasks.python.core.base_options import BaseOptions
+# OpenCV and MediaPipe are optional native runtimes. The patient intake,
+# reporting, export, and clinician-review paths must remain usable even when
+# a platform cannot initialize one of them, so load both only on Analyze.
+cv2 = None
+mp = None
+mp_vision = None
+BaseOptions = None
 
-    _CV_AVAILABLE = True
-except ImportError:
-    _CV_AVAILABLE = False
+
+def _load_analysis_runtime() -> bool:
+    """Load OpenCV and MediaPipe only when local analysis begins."""
+    global cv2, mp, mp_vision, BaseOptions
+    if mp is not None and mp_vision is not None and BaseOptions is not None:
+        return True
+    try:
+        import cv2 as open_cv
+        import mediapipe as media_pipe
+        from mediapipe.tasks.python import vision as media_pipe_vision
+        from mediapipe.tasks.python.core.base_options import BaseOptions as media_pipe_base_options
+    except ImportError:
+        return False
+    cv2 = open_cv
+    mp = media_pipe
+    mp_vision = media_pipe_vision
+    BaseOptions = media_pipe_base_options
+    return True
 
 BASE_DIR = pathlib.Path(__file__).parent
 MODEL_PATH = BASE_DIR / "models" / "pose_landmarker_lite.task"
@@ -280,7 +297,7 @@ def frame_elbow_angle(frame_data: Optional[dict], selected_arm: Arm) -> Optional
 
 
 def _require_cv() -> None:
-    if not _CV_AVAILABLE:
+    if not _load_analysis_runtime():
         raise MovementAnalysisUnavailableError(
             "opencv-python and mediapipe are not installed. Run `pip install -r requirements.txt`."
         )
