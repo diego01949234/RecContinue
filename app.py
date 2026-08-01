@@ -1077,6 +1077,10 @@ def build_app() -> gr.Blocks:
                     annotated_output = gr.Video(
                         label="MediaPipe annotated result — detected nodes & connections",
                         interactive=False,
+                        # The converted result has no audio, so browsers may
+                        # autoplay it immediately after Analyze completes.
+                        autoplay=True,
+                        playback_position=0,
                     )
                     metrics_display = gr.Markdown(_metrics_markdown({}, is_synthetic=False))
                     report_next_btn = gr.Button("Create Gemma report →", variant="primary")
