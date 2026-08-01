@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .env
 .env.*
+.worktrees/
 
 # Never commit generated sessions, recordings, or model weights
 vault/
