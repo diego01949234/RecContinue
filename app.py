@@ -1071,6 +1071,7 @@ def build_app() -> gr.Blocks:
                     arm_radio = gr.Radio(["left", "right"], value=SYNTHETIC_PATIENT["selected_arm"], label="Arm to analyze")
                     video_input = gr.Video(sources=["webcam"], label="Camera recording")
                     analyze_btn = gr.Button("Analyze recording", variant="primary")
+                    demo_test_btn = gr.Button("Load demo test result", variant="secondary")
                     analysis_progress_md = gr.Markdown("", elem_classes=["kc-analysis-progress"])
                 with gr.Group(elem_classes=["kc-card"]):
                     annotated_output = gr.Video(label="MediaPipe annotated result", interactive=False)
@@ -1102,6 +1103,10 @@ def build_app() -> gr.Blocks:
                 # video preprocessor avoids its otherwise mandatory FFmpeg
                 # conversion step on machines where FFmpeg is unavailable.
                 preprocess=False,
+            )
+            demo_test_btn.click(
+                fn=use_synthetic_demo_session,
+                outputs=[metrics_state, metrics_display, analysis_progress_md],
             )
             report_next_btn.click(fn=lambda: gr.Tabs(selected=2), outputs=tabs)
             voice_input.stop_recording(
