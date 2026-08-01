@@ -32,9 +32,10 @@ project, the Kaggle Writeup itself is drafted outside of Claude Code:
   validates the JSON response against the `schemas.RecContinueReport`
   Pydantic model, and attempts one JSON-repair prompt if the first
   response doesn't validate. Runnable standalone: `python gemma_client.py`.
-- ✅ **Phase 2 — App Shell**: `app.py` is a Gradio Blocks app with all six
-  required tabs, RecContinue brand styling and status badges, the synthetic
-  patient loaded on Tab 1, and a live local-Gemma connection indicator.
+- ✅ **Phase 2 — App Shell**: `app.py` is a branded Gradio Blocks app with a
+  focused patient flow: choose one of four synthetic clinician-provided
+  modules, record with the computer camera, generate a local Gemma report,
+  then export a minimal packet. Clinician review is a separate tab.
 - ✅ **Phase 3 — Simple Movement Analysis**: `movement_analysis.py` runs
   MediaPipe Pose Landmarker + OpenCV locally against an uploaded video,
   reading only the upper-body landmark subset in SPEC.md section 6 (head,
@@ -74,16 +75,14 @@ project, the Kaggle Writeup itself is drafted outside of Claude Code:
   tries to mark a still-flagged report reviewed (a clinician note can
   still be saved without marking it reviewed). This closes out P0 per
   SPEC.md's acceptance criteria (section 21).
-- ✅ **Post-P0 addition — Analyze progress + Tab 1 voice front-door**:
+- ✅ **Post-P0 addition — Analyze progress + local voice capability**:
   `movement_analysis.analyze_video()` now yields live progress (frame
   count, current elbow angle, running rep count) while it runs, shown on
-  Tab 2 instead of a blank wait. Tab 1 adds an optional voice note,
-  transcribed locally with `faster-whisper` (`stt_client.py`), that gets
-  a short Gemma acknowledgment reconfirming the one therapist-assigned
-  task (never a new one) and pre-fills Tab 3's patient statement. The
-  acknowledgment is scanned by the same `safety.py` flagged-phrase
-  checker used on the full PEO report before it's ever shown. Both
-  features are additive and skippable — see
+  Tab 2 instead of a blank wait. A local, optional voice capability remains
+  available in the codebase (`stt_client.py`), but the patient UI now puts
+  its focus on module selection, camera tracking, and the report. The
+  acknowledgment path is scanned by the same `safety.py` flagged-phrase
+  checker used on the full PEO report — see
   `docs/superpowers/specs/2026-08-01-analyze-progress-and-voice-frontdoor-design.md`.
 - ⬜ **Phase 6 — Submission Support**: not started (see note above).
 
@@ -169,12 +168,6 @@ download the MediaPipe Pose Landmarker model — see
 place it. Without the model file, Tab 2 shows a clear setup message
 instead of crashing, and the synthetic metrics fallback still works.
 
-To use Tab 1's optional voice front-door, no extra setup is needed beyond
-`pip install -r requirements.txt` — `faster-whisper` downloads its small
-model automatically the first time you record a voice note, then caches
-it locally. Without a microphone or without `faster-whisper` installed,
-Tab 1 shows a clear message and the rest of the flow is unaffected.
-
 Then run the app:
 
 ```bash
@@ -190,26 +183,18 @@ It binds only to `127.0.0.1:7860` (`share=False`), with
 
 ## Demo workflow (current build)
 
-1. Open the app. Tab 1 shows the synthetic patient (Ms. Lin, `SYN-001`),
-   the local Gemma connection status, the arm selector, task instructions,
-   and the privacy explanation.
-2. On Tab 2, upload a short MP4 of the reach-and-place task and click
-   **Analyze** for real local landmark detection, overlay, and metrics —
-   or click **Use synthetic metrics fallback** to preview the rest of the
-   workflow without a video.
-3. On Tab 3, review/edit the prefilled patient-context fields.
-4. On Tab 4, click **Use Synthetic Demo Session** (loads synthetic
-   metrics + context) and then **Generate with Gemma**. With Ollama
-   running and `gemma4:e2b` pulled, this produces a validated PEO report
-   and automatically saves it to the local vault. Without Ollama running,
-   it shows a clear setup error instead of a fabricated report.
-5. On Tab 5, the local-vault summary reflects the saved session. Raw
-   video and representative frame are excluded by default; check the
-   consent box and click **Export clinician packet** to write a minimized
-   `SYN-001-session.reccontinue.json` to `exports/`.
-6. On Tab 6, import that `.reccontinue.json` file to view the metrics, PEO
-   report, and patient-reported context, add a clinician note, check
-   **Reviewed by clinician**, and click **Export reviewed report**.
+1. Open the app and choose exactly one of four synthetic, clinician-provided
+   rehabilitation modules. Click **Apply selected module**.
+2. On **Track movement**, choose the arm and record with the computer
+   camera. Stopping the recording starts local MediaPipe analysis. A small
+   synthetic-measurements shortcut is available for judging without a camera.
+3. On **Gemma report**, generate a validated PEO documentation draft from
+   the selected module and the local measurements. The report includes
+   objective observations, missing information, and neutral questions for
+   clinician discussion; it does not give treatment advice.
+4. On **Export**, the default packet contains the measurement summary and
+   report, while raw video stays excluded. The separate **Clinician review**
+   tab imports an exported packet for annotation and review.
 
 ## Tests
 

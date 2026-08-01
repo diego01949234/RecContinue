@@ -1,11 +1,8 @@
-"""RecContinue Gradio app shell.
+"""RecContinue's focused local rehabilitation-record workflow.
 
-All six tabs are wired to real local logic: Tab 1 (Patient & Task), Tab 2
-(Record & Analyze, via movement_analysis.py), Tab 3 (Patient Context),
-Tab 4 (Generate Report, via gemma_client.py, auto-saving to the local
-vault via storage.py on success), Tab 5 (Privacy & Export, via
-packet_export.py), and Tab 6 (Clinician Mode, packet import/review/export
-via packet_export.py).
+The patient-facing flow is intentionally short: choose one clinician-provided
+module, record with the webcam, generate a local Gemma documentation draft,
+then export a minimal clinician packet.  Clinician review remains separate.
 """
 from __future__ import annotations
 
@@ -24,8 +21,8 @@ from gemma_client import (
     GemmaTimeoutError,
     OllamaUnavailableError,
     check_ollama_connection,
-    generate_onboarding_intake,
     generate_acknowledgment,
+    generate_onboarding_intake,
     generate_report,
 )
 from movement_analysis import (
@@ -59,6 +56,60 @@ LOGO_DATA_URI = "data:image/svg+xml;base64," + __import__("base64").b64encode(
 
 STATUS_BADGE_TEXT = "Gemma running locally · No cloud processing · Synthetic data only"
 SAFETY_BADGE_TEXT = "Documentation support only · Clinician review required"
+
+# Four synthetic clinician-provided modules shown in the patient flow.  They
+# change the documentation context and the clear on-screen task label; they do
+# not make a clinical recommendation or alter the underlying camera metrics.
+ACTIVITY_MODULES = {
+    "Cup to shelf": {
+        "task": "Reach-and-place cup task",
+        "summary": "Pick up a lightweight cup, reach toward shoulder height, then return it to the table.",
+        "context": {
+            "daily_activity": "Putting cups away on a kitchen shelf.",
+            "difficulty_location": "A frequently used shelf above shoulder height.",
+            "assistance_needed": "Not recorded for this session.",
+            "discomfort_reported": "Not recorded for this session.",
+            "independence_goal": "Putting cups away independently.",
+            "patient_statement": "No additional patient statement was recorded for this session.",
+        },
+    },
+    "High-shelf reach": {
+        "task": "High-shelf reach task",
+        "summary": "Reach toward an object placed at shoulder height or slightly above, then return to the start position.",
+        "context": {
+            "daily_activity": "Reaching for a commonly used household item.",
+            "difficulty_location": "A shelf positioned above shoulder height.",
+            "assistance_needed": "Not recorded for this session.",
+            "discomfort_reported": "Not recorded for this session.",
+            "independence_goal": "Reaching for a household item independently.",
+            "patient_statement": "No additional patient statement was recorded for this session.",
+        },
+    },
+    "Tabletop reach": {
+        "task": "Tabletop reach-and-return task",
+        "summary": "Reach across a table for a lightweight object, bring it back, and repeat at a comfortable pace.",
+        "context": {
+            "daily_activity": "Reaching for and moving objects during a tabletop activity.",
+            "difficulty_location": "Across the table within the home environment.",
+            "assistance_needed": "Not recorded for this session.",
+            "discomfort_reported": "Not recorded for this session.",
+            "independence_goal": "Managing tabletop objects independently.",
+            "patient_statement": "No additional patient statement was recorded for this session.",
+        },
+    },
+    "Forward reach": {
+        "task": "Seated forward-reach task",
+        "summary": "From a seated position, reach forward for a lightweight object and return it to the start position.",
+        "context": {
+            "daily_activity": "Reaching forward for a frequently used object.",
+            "difficulty_location": "In front of the seated position at home.",
+            "assistance_needed": "Not recorded for this session.",
+            "discomfort_reported": "Not recorded for this session.",
+            "independence_goal": "Reaching for an object from a seated position independently.",
+            "patient_statement": "No additional patient statement was recorded for this session.",
+        },
+    },
+}
 
 BRAND_CSS = """
 :root {
@@ -161,6 +212,17 @@ BRAND_CSS = """
 .kc-intake-card { border-color: #BFE4DA !important; background: linear-gradient(135deg, #FFFFFF 0%, #F1FBF8 100%) !important; }
 .kc-intake-card::before { content: "START HERE"; display: block; margin-bottom: 10px; color: var(--kc-teal-dark); font-size: .65rem; font-weight: 800; letter-spacing: .13em; }
 .kc-intake-card textarea { background: rgba(255,255,255,.92) !important; }
+.kc-module-card { border-color: #BFE4DA !important; background: linear-gradient(140deg, #FFFFFF 0%, #F0FAF7 100%) !important; }
+.kc-module-card::before { content: "STEP 01 · CHOOSE ONE"; display: block; margin-bottom: 10px; color: var(--kc-teal-dark); font-size: .65rem; font-weight: 800; letter-spacing: .13em; }
+.kc-module-picker fieldset { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px !important; }
+.kc-module-picker label { margin: 0 !important; min-height: 74px; padding: 16px !important; border: 1px solid #D7E8E4 !important; border-radius: 12px !important; background: rgba(255,255,255,.88) !important; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.kc-module-picker label:hover { border-color: var(--kc-teal) !important; box-shadow: 0 8px 20px rgba(16,117,103,.10); transform: translateY(-1px); }
+.kc-module-picker input:checked + span { color: var(--kc-teal-dark) !important; font-weight: 800 !important; }
+.kc-module-summary { margin: 14px 0 2px; padding: 13px 15px; border-left: 3px solid var(--kc-teal); border-radius: 0 10px 10px 0; background: #F5FBF9; color: #31534D; }
+.kc-camera-card { border-color: #C8DCE7 !important; background: linear-gradient(135deg, #FFFFFF 0%, #F4FAFD 100%) !important; }
+.kc-report-lead { font-size: 1rem; color: var(--kc-navy); line-height: 1.65; }
+.kc-quiet-note { margin: 12px 0 0; color: var(--kc-text-secondary); font-size: .78rem; }
+@media (max-width: 640px) { .kc-module-picker fieldset { grid-template-columns: 1fr; } }
 .kc-optional-card { border-style: dashed !important; background: #FBFCFD !important; }
 .kc-optional-card .prose p { margin-bottom: .3rem; }
 .kc-analysis-progress { min-height: 27px; margin-top: 12px; padding: 7px 10px; color: var(--kc-teal-dark); border-radius: 8px; background: var(--kc-mist); font-size: .78rem; font-weight: 700; }
@@ -243,90 +305,15 @@ def _tracked_parts_html() -> str:
     return f'<div class="kc-track-grid">{items}</div>'
 
 
-LANDING_MD = f"""
-<p class="kc-landing-eyebrow">Ms. Lin · Post-stroke rehabilitation · Assigned by your therapist</p>
-<p class="kc-landing-title">Continue today's reach-and-place cup task</p>
-
-Every movement has context. Every record should stay private. RecContinue helps
-you continue an activity your therapist already assigned, keeps a private
-record of what happened, and brings it back for your therapist to review —
-it never decides what you should do or whether it went well.
-
-**What the camera looks at — nothing more:**
-"""
-
-LANDING_NOTE_MD = (
-    "Not your face. Not your home. Not your whole body — just these four "
-    "points, measured on this device, never sent anywhere automatically."
-)
-
 POSITIONING_MD = """
-Rehabilitation shouldn't stop when a patient leaves the clinic. RecContinue
-helps patients continue an activity their therapist already assigned,
-records what happened, and brings that record back for the therapist to
-review — the therapist sets the activity and reviews the outcome; Gemma 4
-only helps organize what happened in between, locally.
-"""
-
-TASK_INSTRUCTIONS_MD = """
-### Today's Activity — Reach-and-Place Cup Task
-
-Assigned by your therapist as part of Ms. Lin's post-stroke rehabilitation
-plan. Continue it at home, at your own pace:
-
-1. Sit or stand in view of the camera.
-2. Place a lightweight cup on a table.
-3. Pick it up.
-4. Raise it approximately to shoulder height or slightly above.
-5. Return it to the table.
-6. Repeat three times.
-
-RecContinue records what it observes so your therapist has something
-concrete to review at your next visit. It does not tell you whether the
-movement is medically correct or safe, and it does not decide what to do
-next — that judgment stays with your clinician.
-"""
-
-PRIVACY_EXPLANATION_MD = """
-### Privacy
-
-- Raw video is only ever processed on this device.
-- Gemma 4 only receives simple movement metrics and the context you choose
-  to enter — never raw video.
-- Raw video is excluded from your exported record by default.
-- Your record is saved on this device first; nothing leaves it
-  automatically.
-- You decide if and when to export a record to bring or send to your
-  therapist.
-- This demo uses synthetic, staged data only — never a real patient.
-
-RecContinue performs capture, analysis, and report generation locally on
-this device. It creates a patient-controlled, minimized clinical packet
-that can be transferred through an institution-approved secure channel.
-This prototype handles export and import only — network transfer is
-outside its scope.
+<p class="kc-report-lead">Choose one clinician-provided module, record with your computer camera, and let local Gemma turn the camera observations into a clinician-review draft.</p>
+<p class="kc-quiet-note">Synthetic demo only. RecContinue documents what the camera observed; it does not diagnose, judge movement, or prescribe rehabilitation.</p>
 """
 
 PRIVACY_PREVIEW_MD = """
-### Privacy Preview
+### Export a minimal clinician packet
 
-**Processed locally, never leaves this device:**
-✓ Raw movement video
-✓ Body landmarks
-✓ Motion measurements
-✓ Gemma 4 report generation
-
-**Included in your exported record (if you choose to export):**
-✓ Session date
-✓ Patient-selected context
-✓ Summary metrics
-✓ PEO report
-
-**Not included by default:**
-✗ Raw video
-✗ Facial image
-✗ Home background
-✗ Real patient identity
+Your report and measurement summary remain on this device until you choose to export them. Raw video is not included by default.
 """
 
 DEFAULT_CONTEXT = {
@@ -339,7 +326,7 @@ DEFAULT_CONTEXT = {
 }
 
 
-PATIENT_STEPS = ["Today's Task", "Record & Analyze", "Your Story", "Generate Record", "Review & Export"]
+PATIENT_STEPS = ["Choose module", "Track movement", "Generate report", "Export record"]
 
 
 def _stepper_html(current: int) -> str:
@@ -406,6 +393,44 @@ def _patient_card_markdown() -> str:
 | Patient goal | "{p['patient_goal']}" |
 | Home context | {p['home_context']} |
 """
+
+
+def _module_markdown(module_name: str | None) -> str:
+    if not module_name or module_name not in ACTIVITY_MODULES:
+        return "_Choose one module to continue._"
+    module = ACTIVITY_MODULES[module_name]
+    return (
+        f"<div class=\"kc-module-summary\"><strong>Selected · {module_name}</strong><br>"
+        f"{module['summary']}</div>"
+    )
+
+
+def apply_module(module_name: str | None):
+    """Require a module choice before camera capture begins."""
+    if not module_name or module_name not in ACTIVITY_MODULES:
+        return None, "⚠️ Choose one rehabilitation module before continuing.", gr.Tabs(), _stepper_html(0)
+    return module_name, _module_markdown(module_name), gr.Tabs(selected=1), _stepper_html(1)
+
+
+def _patient_for_module(module_name: str | None) -> dict:
+    patient = dict(SYNTHETIC_PATIENT)
+    if module_name in ACTIVITY_MODULES:
+        module = ACTIVITY_MODULES[module_name]
+        patient["task"] = module["task"]
+        patient["patient_goal"] = module["context"]["independence_goal"]
+        patient["home_context"] = module["context"]["difficulty_location"]
+    return patient
+
+
+def _context_for_module(module_name: str | None, completion_barrier: str = "") -> dict:
+    module = ACTIVITY_MODULES.get(module_name or "", ACTIVITY_MODULES["Cup to shelf"])
+    context = dict(module["context"])
+    context["activity_completion"] = (
+        f"Patient reported a barrier during the selected module: {completion_barrier}."
+        if completion_barrier.strip()
+        else "Completion status was not recorded separately; review the local camera observations."
+    )
+    return context
 
 
 def _ollama_status_markdown() -> str:
@@ -566,7 +591,7 @@ def _report_markdown(report_dict: dict) -> str:
 #### Missing information
 {bullets(report_dict['missing_information'])}
 
-#### Clinician follow-up questions
+#### Discussion ideas for clinician review
 {bullets(report_dict['clinician_follow_up_questions'])}
 
 #### Patient-friendly recap
@@ -607,24 +632,15 @@ def _vault_summary_markdown(session: dict | None) -> str:
 
 
 def use_synthetic_demo_session():
-    values = [DEFAULT_CONTEXT[k] for k in [
-        "daily_activity", "difficulty_location", "assistance_needed",
-        "discomfort_reported", "independence_goal", "patient_statement",
-    ]]
+    """Keep a small judging fallback without adding more patient-flow fields."""
     return (
         SYNTHETIC_METRICS,
         _metrics_markdown(SYNTHETIC_METRICS, is_synthetic=True),
-        *values,
-        "Synthetic demonstration data — not generated from a real patient.",
+        "Synthetic demonstration measurements loaded. Generate the report when ready.",
     )
 
 
-def generate_with_gemma(
-    metrics_state, current_session,
-    daily_activity, difficulty_location, assistance_needed,
-    discomfort_reported, independence_goal, patient_statement,
-    could_not_complete, completion_barrier,
-):
+def generate_with_gemma(metrics_state, current_session, module_name, completion_barrier):
     if not metrics_state:
         return (
             "No movement metrics available. Analyze a video, use the synthetic metrics "
@@ -632,24 +648,15 @@ def generate_with_gemma(
             "", "{}", current_session, "",
         )
 
-    patient_context = {
-        "daily_activity_goal": daily_activity,
-        "difficulty_location": difficulty_location,
-        "assistance_needed": assistance_needed,
-        "discomfort_reported": discomfort_reported,
-        "independence_goal": independence_goal,
-        "patient_statement": patient_statement,
-        "activity_completion": (
-            f"Patient reported being unable to complete today's assigned activity as "
-            f"planned. Reason given: {completion_barrier or 'not specified'}."
-            if could_not_complete
-            else "Patient completed today's assigned activity as planned."
-        ),
-    }
+    if module_name not in ACTIVITY_MODULES:
+        return "Choose a rehabilitation module first.", "", "{}", current_session, ""
+
+    patient = _patient_for_module(module_name)
+    patient_context = _context_for_module(module_name, completion_barrier or "")
     session_id = f"{SYNTHETIC_PATIENT['patient_id']}-session"
 
     try:
-        report = generate_report(session_id, SYNTHETIC_PATIENT, metrics_state, patient_context)
+        report = generate_report(session_id, patient, metrics_state, patient_context)
     except OllamaUnavailableError as exc:
         return f"⚠️ {exc}", "", "{}", current_session, ""
     except GemmaModelNotInstalledError as exc:
@@ -671,12 +678,12 @@ def generate_with_gemma(
     report_dict = report.model_dump()
     review_status = safety_result.status_label if not safety_result.passed else report_dict["report_status"]
     storage.save_session(
-        session_id, SYNTHETIC_PATIENT, metrics_state, patient_context, report_dict,
+        session_id, patient, metrics_state, patient_context, report_dict,
         video_path=None, review_status=review_status,
     )
     session = {
         "session_id": session_id,
-        "patient": SYNTHETIC_PATIENT,
+        "patient": patient,
         "movement_metrics": metrics_state,
         "patient_context": patient_context,
         "gemma_report": report_dict,
@@ -693,6 +700,19 @@ def generate_with_gemma(
     return (
         "", _report_markdown(report_dict), json.dumps(report_dict, indent=2), session,
         _safety_markdown(safety_result),
+    )
+
+
+def export_minimal_packet_handler(session, include_frame, include_raw_video, consent):
+    """Export the focused flow's safe defaults without surfacing every field."""
+    return export_clinician_packet_handler(
+        session,
+        include_metrics=True,
+        include_report=True,
+        include_statement=True,
+        include_frame=include_frame,
+        include_raw_video=include_raw_video,
+        consent=consent,
     )
 
 
@@ -788,236 +808,103 @@ def build_app() -> gr.Blocks:
         )
         metrics_state = gr.State(value=None)
         current_session_state = gr.State(value=None)
+        selected_module_state = gr.State(value=None)
+        gr.Markdown(POSITIONING_MD)
+        stepper_html = gr.HTML(_stepper_html(0))
 
-        with gr.Column(visible=True) as landing_view:
-            with gr.Group(elem_classes=["kc-landing-card"]):
-                gr.Markdown(LANDING_MD)
-                gr.HTML(_tracked_parts_html())
-                gr.Markdown(f'<p class="kc-helper-text">{LANDING_NOTE_MD}</p>')
-                with gr.Row(elem_classes=["kc-landing-start"]):
-                    start_session_btn = gr.Button("Start Today's Session →", variant="primary")
+        with gr.Tabs(elem_id="kc-tabs") as tabs:
+            with gr.Tab("1 · Choose module", id=0):
+                with gr.Group(elem_classes=["kc-card", "kc-module-card"]):
+                    gr.Markdown("<p class=\"kc-card-title\">Which clinician-provided activity are you recording today?</p>")
+                    module_radio = gr.Radio(
+                        list(ACTIVITY_MODULES),
+                        value=None,
+                        label="Choose one module",
+                        elem_classes=["kc-module-picker"],
+                    )
+                    module_summary_md = gr.Markdown("", elem_classes=["kc-module-summary"])
+                    apply_module_btn = gr.Button("Apply selected module →", variant="primary")
+                with gr.Group(elem_classes=["kc-card", "kc-status-card"]):
+                    ollama_status_md = gr.Markdown(_ollama_status_markdown())
+                    refresh_status_btn = gr.Button("Recheck local Gemma status", size="sm", variant="secondary")
+                    refresh_status_btn.click(fn=_ollama_status_markdown, outputs=ollama_status_md)
 
-        with gr.Column(visible=False) as main_view:
-            gr.Markdown(POSITIONING_MD)
+            with gr.Tab("2 · Track movement", id=1):
+                with gr.Group(elem_classes=["kc-card", "kc-camera-card"]):
+                    selected_module_md = gr.Markdown("_Select a module first._")
+                    gr.Markdown(
+                        '<p class="kc-card-title">Record with your computer camera</p>'
+                        "Press **Record**, perform the selected activity in view of the camera, then press **Stop**. "
+                        "MediaPipe tracking starts immediately on this device."
+                    )
+                    arm_radio = gr.Radio(["left", "right"], value=SYNTHETIC_PATIENT["selected_arm"], label="Arm to track")
+                    video_input = gr.Video(sources=["webcam"], label="Computer camera")
+                    with gr.Row():
+                        analyze_btn = gr.Button("Analyze recording", variant="primary")
+                        synthetic_fallback_btn = gr.Button("Load demo measurements", variant="secondary")
+                    analysis_progress_md = gr.Markdown("", elem_classes=["kc-analysis-progress"])
+                with gr.Group(elem_classes=["kc-card"]):
+                    annotated_output = gr.Video(label="Tracking overlay", interactive=False)
+                    metrics_display = gr.Markdown(_metrics_markdown({}, is_synthetic=False))
+                    gr.Markdown('<p class="kc-helper-text">2D camera observations only. They require clinician review and are not a clinical assessment.</p>')
+                with gr.Row(elem_classes=["kc-continue"]):
+                    continue2_btn = gr.Button("Generate report →", variant="primary")
+                continue2_warning = gr.Markdown("", elem_classes=["kc-hint-warning"])
 
-            stepper_html = gr.HTML(_stepper_html(0))
+                analyze_btn.click(fn=analyze_video_handler, inputs=[video_input, arm_radio], outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md])
+                video_input.stop_recording(fn=analyze_video_handler, inputs=[video_input, arm_radio], outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md])
+                synthetic_fallback_btn.click(fn=use_synthetic_metrics_fallback, outputs=[metrics_state, metrics_display, analysis_progress_md])
+                continue2_btn.click(fn=continue_from_record, inputs=metrics_state, outputs=[tabs, stepper_html, continue2_warning])
 
-            with gr.Tabs(elem_id="kc-tabs") as tabs:
-                with gr.Tab("1 · Today's Activity", id=0):
-                    with gr.Group(elem_classes=["kc-card", "kc-status-card"]):
-                        ollama_status_md = gr.Markdown(_ollama_status_markdown())
-                        refresh_status_btn = gr.Button("Recheck local Gemma status", size="sm", variant="secondary")
-                        refresh_status_btn.click(fn=_ollama_status_markdown, outputs=ollama_status_md)
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown(_patient_card_markdown())
-                        arm_radio = gr.Radio(
-                            ["left", "right"],
-                            value=SYNTHETIC_PATIENT["selected_arm"],
-                            label="Selected arm for this session",
-                        )
-                    with gr.Group(elem_classes=["kc-card", "kc-intake-card"]):
-                        gr.Markdown(
-                            '<p class="kc-card-title">What would you like your therapist to understand?</p>'
-                            "Write naturally. Mention what you are trying to do, what feels hard, and any help "
-                            "you needed. Gemma organizes it into editable context; it never changes your assigned activity."
-                        )
-                        onboarding_words_tb = gr.Textbox(
-                            label="Your goal and what is difficult today",
-                            placeholder="For example: I want to put cups on the high shelf, but my arm gets tired and I ask my daughter for help.",
-                            lines=3,
-                        )
-                        organize_onboarding_btn = gr.Button("Organize with Gemma", variant="secondary")
-                        onboarding_summary_md = gr.Markdown("")
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown(TASK_INSTRUCTIONS_MD)
-                        could_not_complete_cb = gr.Checkbox(
-                            value=False,
-                            label="I couldn't do this activity today",
-                        )
-                        completion_barrier_tb = gr.Textbox(
-                            label="What made it hard? (optional — goes to your therapist as-is)",
-                            lines=2,
-                        )
-                    with gr.Accordion("Prefer to say it out loud? (optional)", open=False, elem_classes=["kc-optional-card"]):
-                        gr.Markdown(
-                            "Record a short voice note. It is transcribed on this device, then used only to prefill "
-                            "your editable context. You can skip this and continue at any time."
-                        )
-                        voice_input = gr.Audio(sources=["microphone"], type="filepath", label="Voice note")
-                        voice_transcript_md = gr.Markdown("")
-                        voice_ack_md = gr.Markdown("")
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown(PRIVACY_EXPLANATION_MD)
-                    with gr.Row(elem_classes=["kc-continue"]):
-                        continue1_btn = gr.Button("Continue to Step 2: Record →", variant="primary")
-    
-                with gr.Tab("2 · Session & Movement Observations", id=1):
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown(
-                            '<p class="kc-card-title">Record your session</p>'
-                            "Press **Record** below, do the activity in view of the camera, then "
-                            "press **Stop** — tracking runs automatically the moment recording "
-                            "ends, no separate upload step needed.\n\n"
-                            '<p class="kc-helper-text">Uploading a video instead? Choose a file '
-                            "in the same box, then click **Analyze video**. Either way, video is "
-                            "processed on this device only and never leaves it.</p>"
-                        )
-                        video_input = gr.Video(sources=["webcam", "upload"], label="Session camera")
-                        with gr.Row():
-                            analyze_btn = gr.Button("Analyze video", variant="primary")
-                            synthetic_fallback_btn = gr.Button("Use synthetic metrics fallback instead", variant="secondary")
-                        analysis_progress_md = gr.Markdown("", elem_classes=["kc-analysis-progress"])
-                    with gr.Group(elem_classes=["kc-card"]):
-                        annotated_output = gr.Video(label="Annotated output", interactive=False)
-                        metrics_display = gr.Markdown(_metrics_markdown({}, is_synthetic=False))
-                        gr.Markdown(
-                            '<p class="kc-helper-text">Limitations: measurements are 2D, '
-                            "camera-based, and estimated from a limited upper-body landmark "
-                            "subset. They are not validated clinical measurements.</p>"
-                        )
-                    with gr.Row(elem_classes=["kc-continue"]):
-                        continue2_btn = gr.Button("Continue to Step 3: Your Story →", variant="primary")
-                    continue2_warning = gr.Markdown("", elem_classes=["kc-hint-warning"])
-    
-                    analyze_btn.click(
-                        fn=analyze_video_handler,
-                        inputs=[video_input, arm_radio],
-                        outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md],
+            with gr.Tab("3 · Gemma report", id=2):
+                with gr.Group(elem_classes=["kc-card"]):
+                    gr.Markdown(
+                        '<p class="kc-card-title">Generate a professional occupational-therapy documentation draft</p>'
+                        "Gemma combines the chosen module with local camera measurements into: objective observations, "
+                        "a Person–Environment–Occupation view, missing information, and neutral discussion ideas for clinician review."
                     )
-                    video_input.stop_recording(
-                        fn=analyze_video_handler,
-                        inputs=[video_input, arm_radio],
-                        outputs=[annotated_output, metrics_display, metrics_state, analysis_progress_md],
-                    )
-                    synthetic_fallback_btn.click(
-                        fn=use_synthetic_metrics_fallback,
-                        outputs=[metrics_state, metrics_display, analysis_progress_md],
-                    )
-                    continue2_btn.click(
-                        fn=continue_from_record,
-                        inputs=metrics_state,
-                        outputs=[tabs, stepper_html, continue2_warning],
-                    )
-    
-                with gr.Tab("3 · How This Fit Your Day", id=2):
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown(
-                            "**Patient-reported information** (kept separate from objective "
-                            "measurements). This is where the activity connects back to real "
-                            "life — not the movement measurements, but what it meant to try it "
-                            "today."
-                        )
-                        daily_activity_tb = gr.Textbox(
-                            label="What daily activity is the patient trying to regain?",
-                            value=DEFAULT_CONTEXT["daily_activity"],
-                        )
-                        difficulty_location_tb = gr.Textbox(
-                            label="Where does the difficulty happen?",
-                            value=DEFAULT_CONTEXT["difficulty_location"],
-                        )
-                        assistance_needed_tb = gr.Textbox(
-                            label="Was assistance needed?", value=DEFAULT_CONTEXT["assistance_needed"]
-                        )
-                        discomfort_reported_tb = gr.Textbox(
-                            label="Was discomfort reported?", value=DEFAULT_CONTEXT["discomfort_reported"]
-                        )
-                        independence_goal_tb = gr.Textbox(
-                            label="What does the patient want to be able to do independently?",
-                            value=DEFAULT_CONTEXT["independence_goal"],
-                        )
-                        patient_statement_tb = gr.Textbox(
-                            label="Optional patient statement",
-                            value=DEFAULT_CONTEXT["patient_statement"],
-                            lines=3,
-                        )
-                    with gr.Row(elem_classes=["kc-continue"]):
-                        continue3_btn = gr.Button("Continue to Step 4: Generate Record →", variant="primary")
+                    completion_barrier_tb = gr.Textbox(label="Optional note for the clinician", placeholder="For example: the session ended early because the camera moved.", lines=2)
+                    gen_ollama_status_md = gr.Markdown(_ollama_status_markdown())
+                    generate_btn = gr.Button("Generate report with Gemma", variant="primary")
+                with gr.Accordion("Demo shortcut", open=False):
+                    demo_session_btn = gr.Button("Use synthetic demo measurements", variant="secondary")
+                    demo_session_note = gr.Markdown("")
+                with gr.Group(elem_classes=["kc-card"]):
+                    generate_error_md = gr.Markdown("")
+                    report_preview_md = gr.Markdown("")
+                    report_json = gr.Code(label="Structured report data", language="json")
+                    safety_status_md = gr.Markdown("")
+                with gr.Row(elem_classes=["kc-continue"]):
+                    continue3_btn = gr.Button("Continue to export →", variant="primary")
+                continue3_warning = gr.Markdown("", elem_classes=["kc-hint-warning"])
 
-                    voice_input.stop_recording(
-                        fn=voice_frontdoor_handler,
-                        inputs=[voice_input],
-                        outputs=[voice_transcript_md, voice_ack_md, patient_statement_tb],
-                    )
-    
-                with gr.Tab("4 · Private Session Record", id=3):
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown(
-                            "Your therapist assigned the activity; this step only organizes what "
-                            "happened locally into a record for them to review — it does not "
-                            "judge or diagnose anything."
-                        )
-                        gen_ollama_status_md = gr.Markdown(_ollama_status_markdown())
-                        generate_btn = gr.Button("Generate with Gemma", variant="primary")
-                    with gr.Accordion("Demo shortcut (for testing / judging only)", open=False):
-                        demo_session_btn = gr.Button("Use Synthetic Demo Session", variant="secondary")
-                        demo_session_note = gr.Markdown("")
-                    with gr.Group(elem_classes=["kc-card"]):
-                        generate_error_md = gr.Markdown("")
-                        report_preview_md = gr.Markdown("")
-                        report_json = gr.Code(label="Editable report preview (JSON)", language="json")
-                        safety_status_md = gr.Markdown("")
-                    with gr.Row(elem_classes=["kc-continue"]):
-                        continue4_btn = gr.Button("Continue to Step 5: Review & Export →", variant="primary")
-                    continue4_warning = gr.Markdown("", elem_classes=["kc-hint-warning"])
-    
-                    demo_session_btn.click(
-                        fn=use_synthetic_demo_session,
-                        outputs=[
-                            metrics_state, metrics_display,
-                            daily_activity_tb, difficulty_location_tb, assistance_needed_tb,
-                            discomfort_reported_tb, independence_goal_tb, patient_statement_tb,
-                            demo_session_note,
-                        ],
-                    )
-                    generate_btn.click(
-                        fn=generate_with_gemma,
-                        inputs=[
-                            metrics_state, current_session_state,
-                            daily_activity_tb, difficulty_location_tb, assistance_needed_tb,
-                            discomfort_reported_tb, independence_goal_tb, patient_statement_tb,
-                            could_not_complete_cb, completion_barrier_tb,
-                        ],
-                        outputs=[generate_error_md, report_preview_md, report_json, current_session_state, safety_status_md],
-                    )
-                    continue4_btn.click(
-                        fn=continue_from_generate,
-                        inputs=current_session_state,
-                        outputs=[tabs, stepper_html, continue4_warning],
-                    )
-    
-                with gr.Tab("5 · Privacy Preview & Export", id=4) as tab5:
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown(PRIVACY_PREVIEW_MD)
-                        vault_summary_md = gr.Markdown(_vault_summary_markdown(None))
-                    with gr.Group(elem_classes=["kc-card"]):
-                        gr.Markdown('<p class="kc-card-title">Choose what to include in a clinician packet</p>')
-                        include_metrics_cb = gr.Checkbox(value=True, label="Include movement metrics")
-                        include_report_cb = gr.Checkbox(value=True, label="Include PEO report")
-                        include_statement_cb = gr.Checkbox(value=True, label="Include patient statement")
-                        include_frame_cb = gr.Checkbox(value=False, label="Include representative frame")
-                        include_raw_video_cb = gr.Checkbox(value=False, label="Include raw video")
-                        consent_cb = gr.Checkbox(value=False, label="I confirm I want to export the selections above")
-                        export_preview_md = gr.Markdown("")
-                        with gr.Row():
-                            export_btn = gr.Button("Export clinician packet", variant="primary")
-                            delete_btn = gr.Button("Delete session", variant="stop")
-    
-                    tab5.select(fn=_vault_summary_markdown, inputs=current_session_state, outputs=vault_summary_md)
-                    export_btn.click(
-                        fn=export_clinician_packet_handler,
-                        inputs=[
-                            current_session_state, include_metrics_cb, include_report_cb,
-                            include_statement_cb, include_frame_cb, include_raw_video_cb, consent_cb,
-                        ],
-                        outputs=export_preview_md,
-                    )
-                    delete_btn.click(
-                        fn=delete_session_handler,
-                        inputs=current_session_state,
-                        outputs=[export_preview_md, current_session_state, vault_summary_md],
-                    )
-    
-                with gr.Tab("6 · Clinician Mode", id=5):
+                demo_session_btn.click(fn=use_synthetic_demo_session, outputs=[metrics_state, metrics_display, demo_session_note])
+                generate_btn.click(
+                    fn=generate_with_gemma,
+                    inputs=[metrics_state, current_session_state, selected_module_state, completion_barrier_tb],
+                    outputs=[generate_error_md, report_preview_md, report_json, current_session_state, safety_status_md],
+                )
+                continue3_btn.click(fn=continue_from_generate, inputs=current_session_state, outputs=[tabs, stepper_html, continue3_warning])
+
+            with gr.Tab("4 · Export", id=3) as tab4:
+                with gr.Group(elem_classes=["kc-card"]):
+                    gr.Markdown(PRIVACY_PREVIEW_MD)
+                    vault_summary_md = gr.Markdown(_vault_summary_markdown(None))
+                with gr.Group(elem_classes=["kc-card"]):
+                    gr.Markdown('<p class="kc-card-title">Default packet: measurement summary + Gemma report</p>')
+                    include_frame_cb = gr.Checkbox(value=False, label="Also include one representative frame")
+                    include_raw_video_cb = gr.Checkbox(value=False, label="Also include raw video")
+                    consent_cb = gr.Checkbox(value=False, label="I confirm I want to export this local record")
+                    export_preview_md = gr.Markdown("")
+                    with gr.Row():
+                        export_btn = gr.Button("Export clinician packet", variant="primary")
+                        delete_btn = gr.Button("Delete local session", variant="stop")
+
+                tab4.select(fn=_vault_summary_markdown, inputs=current_session_state, outputs=vault_summary_md)
+                export_btn.click(fn=export_minimal_packet_handler, inputs=[current_session_state, include_frame_cb, include_raw_video_cb, consent_cb], outputs=export_preview_md)
+                delete_btn.click(fn=delete_session_handler, inputs=current_session_state, outputs=[export_preview_md, current_session_state, vault_summary_md])
+
+            with gr.Tab("Clinician review", id=4):
                     clinician_packet_state = gr.State(value=None)
                     with gr.Group(elem_classes=["kc-card"]):
                         gr.Markdown("Import a `.reccontinue.json` clinician packet exported from the Privacy & Export tab.")
@@ -1046,27 +933,12 @@ def build_app() -> gr.Blocks:
                         outputs=clinician_import_status,
                     )
     
-                tabs.select(fn=on_tab_select, outputs=stepper_html)
-                continue1_btn.click(fn=lambda: continue_to_step(1), outputs=[tabs, stepper_html])
-                continue3_btn.click(fn=lambda: continue_to_step(3), outputs=[tabs, stepper_html])
-                organize_onboarding_btn.click(
-                    fn=organize_onboarding,
-                    inputs=onboarding_words_tb,
-                    outputs=[
-                        onboarding_summary_md,
-                        daily_activity_tb,
-                        difficulty_location_tb,
-                        assistance_needed_tb,
-                        discomfort_reported_tb,
-                        independence_goal_tb,
-                        patient_statement_tb,
-                    ],
-                )
-
-        start_session_btn.click(
-            fn=lambda: (gr.Column(visible=False), gr.Column(visible=True)),
-            outputs=[landing_view, main_view],
-        )
+            tabs.select(fn=on_tab_select, outputs=stepper_html)
+            apply_module_btn.click(
+                fn=apply_module,
+                inputs=module_radio,
+                outputs=[selected_module_state, module_summary_md, tabs, stepper_html],
+            ).then(fn=_module_markdown, inputs=selected_module_state, outputs=selected_module_md)
 
     return demo
 
