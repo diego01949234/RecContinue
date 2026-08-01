@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="An interactive RecContinue rehabilitation observation demo." />
+    <title>RecContinue — movement made visible</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="#top" aria-label="RecContinue home"><span class="brand-mark">R</span>RecContinue</a>
+        <span class="nav-note">INTERACTIVE DEMO · LOCAL-FIRST REHAB RECORD</span>
+        <a class="nav-link" href="#demo">Try the demo <span aria-hidden="true">↓</span></a>
+      </nav>
+
+      <section class="hero" id="top">
+        <p class="eyebrow">MOVEMENT, WITH CONTEXT</p>
+        <h1>Make a small movement<br /><em>visible.</em></h1>
+        <div class="hero-bottom">
+          <p>RecContinue turns a short camera observation into a clear, clinician-reviewable PEO record—without making the person behind the movement disappear.</p>
+          <a class="button button-dark" href="#demo">Explore a session <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="hero-orbit" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><b>2D<br />OBSERVE</b>
+        </div>
+      </section>
+
+      <section class="principles" aria-label="Product principles">
+        <div><span>01</span><p><strong>See the movement.</strong> Camera-derived landmarks make the observation legible.</p></div>
+        <div><span>02</span><p><strong>Keep the context.</strong> PEO framing places a task in a person's real day.</p></div>
+        <div><span>03</span><p><strong>Review, don't automate.</strong> Every draft is clearly for clinician review.</p></div>
+      </section>
+
+      <section class="demo-section" id="demo">
+        <div class="section-head">
+          <div><p class="eyebrow">LIVE PROTOTYPE</p><h2>Run an observation.</h2></div>
+          <p class="section-note">This interactive site uses clearly labelled synthetic data. It demonstrates the experience; it does not perform clinical analysis.</p>
+        </div>
+
+        <div class="demo-shell">
+          <aside class="controls" aria-label="Demo controls">
+            <p class="step-label">01 · Choose view</p>
+            <div class="module-picker" role="radiogroup" aria-label="Observation module">
+              <button class="module active" data-module="arm" role="radio" aria-checked="true"><span>Arm</span><small>Elbow motion</small></button>
+              <button class="module" data-module="palm" role="radio" aria-checked="false"><span>Palm</span><small>Hand aperture</small></button>
+              <button class="module" data-module="head" role="radio" aria-checked="false"><span>Head</span><small>Rotation proxy</small></button>
+            </div>
+            <div class="capture-card">
+              <span class="record-dot" aria-hidden="true"></span>
+              <div><p id="captureTitle">Ready for a short recording</p><small id="captureDetail">Choose a view, then run the demo.</small></div>
+            </div>
+            <button class="button button-coral" id="runDemo">Run MediaPipe demo <span aria-hidden="true">→</span></button>
+            <p class="privacy-note">No camera, video, or health data is collected in this demo.</p>
+          </aside>
+
+          <div class="observation">
+            <div class="video-top"><span id="videoMode">ARM · 2D LANDMARK OVERLAY</span><span class="live-chip" id="liveChip">READY</span></div>
+            <div class="canvas-wrap">
+              <canvas id="motionCanvas" width="800" height="520" aria-label="Animated landmark observation preview"></canvas>
+              <div class="canvas-empty" id="canvasEmpty"><span>Press “Run MediaPipe demo”</span><small>Detected nodes will appear here.</small></div>
+              <div class="timeline"><i id="timelineFill"></i><span id="timeCounter">0:00</span><span>0:08</span></div>
+            </div>
+            <div class="analysis-line" id="analysisLine">Select a view to preview the corresponding observation.</div>
+          </div>
+
+          <aside class="metrics" aria-live="polite">
+            <p class="step-label">02 · Observation</p>
+            <div class="metric-main"><span id="metricValue">—</span><small id="metricUnit">WAITING</small></div>
+            <p class="metric-name" id="metricName">Elbow angular excursion</p>
+            <dl>
+              <div><dt>Landmark samples</dt><dd id="sampleCount">—</dd></div>
+              <div><dt>Confidence</dt><dd id="confidence">—</dd></div>
+              <div><dt>Camera view</dt><dd id="viewName">Arm</dd></div>
+            </dl>
+            <div class="metrics-foot" id="metricsFoot">Awaiting demonstration observation.</div>
+          </aside>
+        </div>
+
+        <div class="report-panel" id="reportPanel">
+          <div class="report-intro"><p class="step-label">03 · GEMMA REPORT</p><h3>A useful draft,<br />not a conclusion.</h3><p>Generate a compact professional summary grounded only in the displayed demonstration measurements.</p><button class="button button-dark" id="generateReport" disabled>Generate report <span aria-hidden="true">→</span></button></div>
+          <article class="report-output" id="reportOutput" aria-live="polite">
+            <p class="report-placeholder">Complete the observation to create a clinician-reviewable demonstration draft.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="closing">
+        <p class="eyebrow">BUILT FOR THE CONVERSATION AFTER THE CLIP</p>
+        <h2>Observation is only<br />the <em>beginning.</em></h2>
+        <p>RecContinue makes a camera moment easier to discuss—while leaving clinical judgment where it belongs: with people.</p>
+      </section>
+    </main>
+    <footer><span>REC<span class="dot">·</span>CONTINUE</span><span>DEMO EXPERIENCE / 2026</span><span>FOR CLINICIAN REVIEW</span></footer>
+    <script src="app.js"></script>
+  </body>
+</html>
