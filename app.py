@@ -158,6 +158,14 @@ BRAND_CSS = """
     background: transparent !important; border: none !important; box-shadow: none !important;
 }
 .kc-card-title { font-weight: 800; color: var(--kc-navy); margin: 0 0 7px; font-size: .92rem; letter-spacing: -.02em; }
+.kc-intake-card { border-color: #BFE4DA !important; background: linear-gradient(135deg, #FFFFFF 0%, #F1FBF8 100%) !important; }
+.kc-intake-card::before { content: "START HERE"; display: block; margin-bottom: 10px; color: var(--kc-teal-dark); font-size: .65rem; font-weight: 800; letter-spacing: .13em; }
+.kc-intake-card textarea { background: rgba(255,255,255,.92) !important; }
+.kc-optional-card { border-style: dashed !important; background: #FBFCFD !important; }
+.kc-optional-card .prose p { margin-bottom: .3rem; }
+.kc-analysis-progress { min-height: 27px; margin-top: 12px; padding: 7px 10px; color: var(--kc-teal-dark); border-radius: 8px; background: var(--kc-mist); font-size: .78rem; font-weight: 700; }
+.kc-analysis-progress:empty { display: none; }
+.kc-status-card { display: flex; align-items: center; gap: 12px; background: #FCFDFD !important; }
 
 /* Button hierarchy */
 button.primary { color: #fff !important; background: var(--kc-teal) !important; border-color: var(--kc-teal) !important; box-shadow: 0 5px 13px rgba(31,168,154,.19); }
@@ -796,7 +804,7 @@ def build_app() -> gr.Blocks:
 
             with gr.Tabs(elem_id="kc-tabs") as tabs:
                 with gr.Tab("1 · Today's Activity", id=0):
-                    with gr.Group(elem_classes=["kc-card"]):
+                    with gr.Group(elem_classes=["kc-card", "kc-status-card"]):
                         ollama_status_md = gr.Markdown(_ollama_status_markdown())
                         refresh_status_btn = gr.Button("Recheck local Gemma status", size="sm", variant="secondary")
                         refresh_status_btn.click(fn=_ollama_status_markdown, outputs=ollama_status_md)
@@ -807,12 +815,11 @@ def build_app() -> gr.Blocks:
                             value=SYNTHETIC_PATIENT["selected_arm"],
                             label="Selected arm for this session",
                         )
-                    with gr.Group(elem_classes=["kc-card"]):
+                    with gr.Group(elem_classes=["kc-card", "kc-intake-card"]):
                         gr.Markdown(
-                            '<p class="kc-card-title">Tell us what matters to you</p>'
-                            "In your own words, describe what you want to do, what makes it "
-                            "hard, and any help you need. Gemma will organize it into editable "
-                            "PEO context for your record; it will not change your therapist-assigned activity."
+                            '<p class="kc-card-title">What would you like your therapist to understand?</p>'
+                            "Write naturally. Mention what you are trying to do, what feels hard, and any help "
+                            "you needed. Gemma organizes it into editable context; it never changes your assigned activity."
                         )
                         onboarding_words_tb = gr.Textbox(
                             label="Your goal and what is difficult today",
@@ -831,12 +838,10 @@ def build_app() -> gr.Blocks:
                             label="What made it hard? (optional — goes to your therapist as-is)",
                             lines=2,
                         )
-                    with gr.Group(elem_classes=["kc-card"]):
+                    with gr.Accordion("Prefer to say it out loud? (optional)", open=False, elem_classes=["kc-optional-card"]):
                         gr.Markdown(
-                            '<p class="kc-card-title">How are you feeling about today’s session? (optional)</p>'
-                            "Record a short voice note if you like — it is transcribed on this "
-                            "device only, and Gemma will just confirm today's assigned activity "
-                            "back to you. You can skip this entirely and continue straight to Step 2."
+                            "Record a short voice note. It is transcribed on this device, then used only to prefill "
+                            "your editable context. You can skip this and continue at any time."
                         )
                         voice_input = gr.Audio(sources=["microphone"], type="filepath", label="Voice note")
                         voice_transcript_md = gr.Markdown("")
@@ -861,7 +866,7 @@ def build_app() -> gr.Blocks:
                         with gr.Row():
                             analyze_btn = gr.Button("Analyze video", variant="primary")
                             synthetic_fallback_btn = gr.Button("Use synthetic metrics fallback instead", variant="secondary")
-                        analysis_progress_md = gr.Markdown("")
+                        analysis_progress_md = gr.Markdown("", elem_classes=["kc-analysis-progress"])
                     with gr.Group(elem_classes=["kc-card"]):
                         annotated_output = gr.Video(label="Annotated output", interactive=False)
                         metrics_display = gr.Markdown(_metrics_markdown({}, is_synthetic=False))
