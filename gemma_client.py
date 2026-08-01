@@ -39,10 +39,10 @@ CONNECT_TIMEOUT_SECONDS = 3
 # short (2-5 word) fields and caps output at REPORT_NUM_PREDICT tokens,
 # which keeps real generations to ~9-10s; 240s remains as a generous
 # ceiling for cold-load or repair-prompt edge cases, not the expected case.
-GENERATE_TIMEOUT_SECONDS = 10
+GENERATE_TIMEOUT_SECONDS = 120
 # Empirically, 6 fields x 2-5 words fits well under 100 tokens; this cap is
 # a safety net against runaway generation, not the normal stopping point.
-REPORT_NUM_PREDICT = 60
+REPORT_NUM_PREDICT = 220
 
 FIXED_SAFETY_NOTICE = (
     "AI-generated draft requiring clinician review. This report does not "

@@ -6,7 +6,7 @@ from typing import Any
 
 SYSTEM_PROMPT = """You are RecContinue, an offline PEO (Person-Environment-Occupation) documentation assistant. You are not a clinician.
 
-Write concise professional rehabilitation documentation: use terms such as PEO context, camera-derived 2D kinematic observation, landmark confidence, elbow flexion/extension, head rotation proxy, or hand aperture ratio when supported by the supplied module and measurements. Write ONE neutral phrase per field, 3-8 words. Clearly keep objective camera measurements separate from patient-reported information.
+Write concise but clinically useful professional rehabilitation documentation: use terms such as PEO context, camera-derived 2D kinematic observation, landmark confidence, elbow flexion/extension, head rotation proxy, or hand aperture ratio when supported by the supplied module and measurements. Write one neutral, information-rich sentence per field (8-18 words). Clearly keep objective camera measurements separate from patient-reported information.
 
 Never: diagnose a condition, assign a Brunnstrom stage or severity classification, judge a movement as normal/abnormal/safe/unsafe, recommend exercise/treatment, invent facts not given, or claim the patient improved or deteriorated.
 
@@ -50,12 +50,12 @@ sentence. Do not infer a condition, severity, or cause. Return valid JSON only
 matching the requested schema, with no markdown."""
 
 REPORT_JSON_SCHEMA_HINT = {
-    "session_summary": "3-8 word professional rehabilitation documentation phrase",
-    "objective_observations": ["3-8 word camera-derived kinematic observation"],
-    "patient_reported_information": ["3-8 word patient-reported phrase"],
-    "person_factors": ["3-8 word PEO person factor"],
-    "environment_factors": ["3-8 word PEO environment factor"],
-    "occupation_factors": ["3-8 word PEO occupation factor"],
+    "session_summary": "8-18 word professional rehabilitation documentation sentence",
+    "objective_observations": ["8-18 word camera-derived kinematic observation"],
+    "patient_reported_information": ["8-18 word patient-reported sentence"],
+    "person_factors": ["8-18 word PEO person factor"],
+    "environment_factors": ["8-18 word PEO environment factor"],
+    "occupation_factors": ["8-18 word PEO occupation factor"],
 }
 
 # Fields RecContinue fills in deterministically after generation rather than

@@ -1082,7 +1082,7 @@ def build_app() -> gr.Blocks:
                 with gr.Group(elem_classes=["kc-card"]):
                     gr.Markdown("<p class=\"kc-card-title\">Custom short report</p>"
                                 "Gemma uses your voice/custom note plus the MediaPipe measurements."
-                                " Output is capped for a fast result.")
+                                " It can take longer to produce a fuller professional draft.")
                     clinician_note = gr.Textbox(label="Custom report note", lines=2)
                     generate_btn = gr.Button("Generate with Gemma", variant="primary")
                     generate_error_md = gr.Markdown("")

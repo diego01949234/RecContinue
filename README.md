@@ -194,8 +194,8 @@ It binds only to `127.0.0.1:7860` (`share=False`), with
    head rotation proxy, hand-aperture ratio, or elbow flexion/extension
    angular excursion.
 3. On **Gemma report**, add or edit the custom report note and generate a
-   concise PEO documentation draft. The local model is output-capped for fast
-   generation and uses professional rehabilitation terminology grounded only
+   fuller PEO documentation draft. The local model is allowed additional time
+   for professional rehabilitation terminology grounded only
    in the recorded measurements and supplied context.
 
 ## Tests
