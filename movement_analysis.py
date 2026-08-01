@@ -316,14 +316,15 @@ def _draw_overlay(frame, frame_data: dict, palm_point: Optional[dict], width: in
         cv2.circle(frame, px(palm_point), 6, BRAND_CORAL, -1)
 
 
-def analyze_video(video_path: str, selected_arm: Arm, output_path: Optional[str] = None) -> tuple[str, dict]:
-    """Run local MediaPipe/OpenCV analysis on a video and return
-    (annotated_video_path, metrics_dict).
+PROGRESS_YIELD_EVERY_N_FRAMES = 5
 
-    Raises NoPoseDetectedError if no pose was found in any frame, and
-    MovementAnalysisUnavailableError if the required dependencies/model
-    are not installed. Never fabricates a result for a video it could not
-    analyze.
+
+def analyze_video(video_path: str, selected_arm: Arm, output_path: Optional[str] = None):
+    """Run local MediaPipe/OpenCV analysis and yield live progress.
+
+    Each intermediate item contains the frame index, optional total frame
+    count, current elbow angle, and running repetition count. The final
+    item is the existing ``(annotated_video_path, metrics_dict)`` tuple.
     """
     _require_cv()
     indices = arm_landmark_indices(selected_arm)
@@ -335,6 +336,7 @@ def analyze_video(video_path: str, selected_arm: Arm, output_path: Optional[str]
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or None
 
     if output_path is None:
         output_path = str(pathlib.Path(video_path).with_name(pathlib.Path(video_path).stem + "_annotated.mp4"))
@@ -345,6 +347,7 @@ def analyze_video(video_path: str, selected_arm: Arm, output_path: Optional[str]
     landmarker = mp_vision.PoseLandmarker.create_from_options(options)
 
     frames_data: list[dict] = []
+    live_rep_counter = RepetitionCounter()
     frame_index = 0
     try:
         while True:
@@ -356,6 +359,7 @@ def analyze_video(video_path: str, selected_arm: Arm, output_path: Optional[str]
             timestamp_ms = int(frame_index * (1000.0 / fps))
             result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
+            frame_data = None
             if result.pose_landmarks:
                 landmarks = result.pose_landmarks[0]
                 frame_data = {
@@ -375,6 +379,15 @@ def analyze_video(video_path: str, selected_arm: Arm, output_path: Optional[str]
                 frames_data.append(frame_data)
 
             writer.write(bgr_frame)
+            current_angle = frame_elbow_angle(frame_data, selected_arm)
+            live_rep_counter.update(current_angle)
+            if frame_index % PROGRESS_YIELD_EVERY_N_FRAMES == 0:
+                yield {
+                    "frame_index": frame_index,
+                    "total_frames": total_frames,
+                    "current_angle": current_angle,
+                    "reps_so_far": live_rep_counter.repetition_count,
+                }
             frame_index += 1
     finally:
         cap.release()
@@ -385,4 +398,4 @@ def analyze_video(video_path: str, selected_arm: Arm, output_path: Optional[str]
         raise NoPoseDetectedError("No pose was detected in this video.")
 
     metrics = compute_session_metrics(frames_data, fps, selected_arm)
-    return output_path, metrics
+    yield output_path, metrics
